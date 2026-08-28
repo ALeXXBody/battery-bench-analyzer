@@ -46,18 +46,14 @@ class _FakeReader:
 
 def test_engine_completes_a_cycle(monkeypatch):
     script = ScriptedBattery()
-    # advance every poll by a fixed step toward low, then charge back up
+    # model: discharge by 10 until low, then user plugs in and it charges up
     def advance():
         if script.pct <= script.low_pct:
-            # charging back up
-            if script.on_ac and script.pct < 100:
-                script.pct = min(100, script.pct + 10)
-        else:
-            script.pct = max(script.low_pct, script.pct - 10)
-            script.on_ac = False
-        # user plugs in once we reach low
-        if script.pct <= script.low_pct + 0.5:
             script.on_ac = True
+        if script.on_ac and script.pct < 100:
+            script.pct = min(100, script.pct + 10)
+        elif not script.on_ac:
+            script.pct = max(script.low_pct, script.pct - 10)
 
     monkeypatch.setattr(time, "sleep", lambda s: advance())
 
