@@ -81,7 +81,6 @@ class UnlockPage(QWidget):
             "I understand that writing to a battery fuel gauge can permanently "
             "alter the pack, may be unsafe on failed cells, and could be "
             "unlawful if used to disguise a worn battery.")
-        self.consent.setWordWrap(True)
         self.write_btn = QPushButton("Enable Write Access")
         self.write_btn.clicked.connect(self._enable_writes)
         w.addWidget(self.consent)

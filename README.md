@@ -19,8 +19,8 @@ vendor's battery tooling.
 
 - **Analyze** — Read your battery's design/full capacity, charge level,
   charge/discharge rates, voltage, chemistry, serial, temperature, cycle count
-  and health (State of Health %) straight from Windows battery/WMI data plus
-  optional SMBus direct reads.
+  and health (State of Health %) straight from Windows' documented battery
+  class driver interface (SetupAPI + IOCTL, pure ctypes — no pywin32).
 - **Regenerate / Recalibrate** — Safe, supervised charge/discharge cycling that
   re-learns full-charge capacity and improves reported health. Runs under a
   power-policy guard so the laptop never sleeps mid-cycle.
@@ -45,6 +45,11 @@ vendor's battery tooling.
 - `pip install -r requirements.txt`
 
 ## Quick start
+
+Prebuilt 64-bit Windows executable: grab `BatteryClinic.exe` from the
+[Releases](../../releases) page and run it (no installer, no Python needed).
+
+From source:
 
 ```bat
 pip install -r requirements.txt

@@ -1,0 +1,54 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt pyinstaller pytest
+
+      - name: Run tests
+        run: python -m pytest tests/ -q
+
+      - name: Build onefile EXE
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name BatteryClinic run.py
+
+      - name: Headless selftest (offscreen)
+        shell: pwsh
+        env:
+          BATTERYCLINIC_SELFTEST: '1'
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $job = Start-Process -FilePath "dist\BatteryClinic.exe" -PassThru
+          $ok = Wait-Process -Id $job.Id -Timeout 60 -ErrorAction SilentlyContinue
+          if (Test-Path selftest_ok.txt) {
+            Get-Content selftest_ok.txt
+          } else {
+            Write-Error "selftest_ok.txt not written - app failed to start"
+            exit 1
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BatteryClinic-windows
+          path: dist/BatteryClinic.exe
+
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/BatteryClinic.exe
