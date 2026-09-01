@@ -98,7 +98,7 @@ def cmd_smbus(args) -> int:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="battery-clinic",
+    parser = argparse.ArgumentParser(prog="voltclinic",
                                      description="Analyze/regenerate laptop batteries.")
     sub = parser.add_subparsers(dest="command", required=True)
 

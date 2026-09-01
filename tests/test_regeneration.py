@@ -5,8 +5,8 @@ import time
 
 import pytest
 
-from battery_clinic.core.models import BatteryInfo, ChargeState
-from battery_clinic.core.regeneration import (
+from voltclinic.core.models import BatteryInfo, ChargeState
+from voltclinic.core.regeneration import (
     NoopPowerPolicy,
     RegenerationEngine,
     RegenerationResult,

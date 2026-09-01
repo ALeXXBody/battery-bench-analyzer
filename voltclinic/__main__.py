@@ -1,4 +1,4 @@
-"""`python -m battery_clinic` launches the GUI (falling back to CLI headless).
+"""`python -m voltclinic` launches the GUI (falling back to CLI headless).
 
 Prints are guarded because in a --windowed PyInstaller exe sys.stdout and
 sys.stderr are None.
@@ -19,8 +19,8 @@ def main() -> int:
         from .gui.app import main as gui_main
         return gui_main()
     except Exception as exc:  # noqa: BLE001
-        _eprint(f"[battery_clinic] GUI failed to start ({exc}).")
-        _eprint("Falling back to CLI. Use `python -m battery_clinic.cli` for the CLI.")
+        _eprint(f"[voltclinic] GUI failed to start ({exc}).")
+        _eprint("Falling back to CLI. Use `python -m voltclinic.cli` for the CLI.")
         try:
             from .cli.__main__ import main as cli_main
             return cli_main(["analyze"])

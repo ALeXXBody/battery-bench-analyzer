@@ -12,28 +12,44 @@ import os
 import sys
 import threading
 
+from .. import __version__
+
 
 def _selftest_exit(delay_s: float, pid: int) -> None:
     import time
     time.sleep(delay_s)
     try:
         with open("selftest_ok.txt", "w", encoding="ascii") as f:
-            f.write(f"ok pid={pid}\n")
+            f.write(f"ok pid={pid} ver={__version__}\n")
     except OSError:
         pass
     os._exit(0)
 
 
+def resource_path(name: str) -> str:
+    """Resolve a bundled resource path in source and frozen (PyInstaller) modes."""
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        return os.path.join(base, name)
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.join(root, "assets", name)
+
+
 def main() -> int:
+    from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
 
     from .theme import DARK_THEME
     from .window import MainWindow
 
     app = QApplication(sys.argv)
-    app.setApplicationName("BatteryClinic")
-    app.setOrganizationName("BatteryClinic")
+    app.setApplicationName("VoltClinic")
+    app.setApplicationVersion(__version__)
+    app.setOrganizationName("VoltClinic")
     app.setStyleSheet(DARK_THEME)
+    icon_path = resource_path("icon.ico")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
 
     win = MainWindow()
     win.show()
@@ -41,6 +57,8 @@ def main() -> int:
     if os.environ.get("BATTERYCLINIC_SELFTEST"):
         threading.Thread(target=_selftest_exit, args=(3.0, os.getpid()),
                          daemon=True).start()
+    else:
+        win.trigger_update_check(silent=True)
 
     return app.exec()
 

@@ -1,6 +1,6 @@
 # Repair & Unlock Hooks
 
-BatteryClinic ships a **documented extension interface** for SMBus fuel-gauge
+VoltClinic ships a **documented extension interface** for SMBus fuel-gauge
 interop, but by design ships **no working proprietary reflash** and no "chip
 unlock" routine.
 
@@ -20,7 +20,7 @@ These writes are the actual "unlock". We chose not to ship a turnkey one:
 - **Legal:** wiping a cycle count to make a worn pack look "new" and reselling
   it is counterfeiting in most jurisdictions.
 
-So BatteryClinic gives you the *bus* and *guarded writes*, but the register map
+So VoltClinic gives you the *bus* and *guarded writes*, but the register map
 and protocol for your specific gauge are up to you.
 
 ## What the hooks give you
@@ -29,7 +29,7 @@ and protocol for your specific gauge are up to you.
 - `Cp2112Smbus` — a ready-made driver for the **CP2112 USB-to-SMBus adapter**
   (Silicon Labs). It talks to the adapter over the Windows **HID** interface, so
   no vendor kernel driver is needed, and it natively handles the SMBus clock
-  stretching that battery fuel gauges require. See `battery_clinic/unlock/cp2112.py`.
+  stretching that battery fuel gauges require. See `voltclinic/unlock/cp2112.py`.
 - `FuelGaugeInterop` — high-level read-mostly access to the standard Smart
   Battery register set (public spec), e.g. `probe()` returns manufacturer,
   device, chemistry, serial, capacities, cycle count.
@@ -45,7 +45,7 @@ then either:
   Gauge* (read-only).
 - **CLI**:
   ```bash
-  python -m battery_clinic.cli smbus --adapter cp2112
+  python -m voltclinic.cli smbus --adapter cp2112
   ```
 
 The driver reimplements the host protocol from Silicon Labs Application Note
@@ -72,7 +72,7 @@ plus your own register map. The `SMbusBus` abstract class is where that adapter
 driver goes:
 
 ```python
-from battery_clinic.unlock.smbus import SMbusBus, FuelGaugeInterop
+from voltclinic.unlock.smbus import SMbusBus, FuelGaugeInterop
 
 class Ch341Bus(SMbusBus):
     def read_word(self, addr, reg): ...   # adapter-specific

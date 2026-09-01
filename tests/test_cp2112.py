@@ -4,7 +4,7 @@ These verify the exact byte layouts documented in Silicon Labs AN495.
 """
 import pytest
 
-from battery_clinic.unlock.cp2112 import (
+from voltclinic.unlock.cp2112 import (
     RID_DATA_READ_RESPONSE,
     RID_SMBUS_CONFIG,
     RID_TRANSFER_STATUS_RESPONSE,

@@ -1,4 +1,4 @@
-"""Modern dark theme for the BatteryClinic GUI (QSS)."""
+"""Modern dark theme for the VoltClinic GUI (QSS)."""
 from __future__ import annotations
 
 DARK_THEME = """
@@ -38,6 +38,11 @@ QPushButton#navButton:checked {
     font-weight: 600;
     color: #ffffff;
     padding: 18px;
+}
+#appVersion {
+    font-size: 12px;
+    color: #6a6f7a;
+    padding: 0 18px 12px 18px;
 }
 #content {
     background-color: #1e1f24;

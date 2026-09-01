@@ -49,7 +49,7 @@ class UnlockPage(QWidget):
         lay.addWidget(title)
 
         notice = QLabel(
-            "BatteryClinic provides READ-ONLY access to a Smart Battery "
+            "VoltClinic provides READ-ONLY access to a Smart Battery "
             "fuel gauge, plus an opt-in write interface. It deliberately does "
             "NOT bundle vendor 'unlock' routines, chip reflashing, or cycle "
             "wiping — those are counterfeit/unsafe on worn-out packs. "

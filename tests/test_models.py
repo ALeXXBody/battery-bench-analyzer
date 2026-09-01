@@ -1,7 +1,7 @@
 """Tests for the battery data model and health calculations."""
 import pytest
 
-from battery_clinic.core.models import (
+from voltclinic.core.models import (
     BatteryInfo,
     ChargeState,
     Chemistry,

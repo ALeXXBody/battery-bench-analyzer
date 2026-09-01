@@ -1,7 +1,7 @@
 """Tests for the SMBus unlock hooks and guarded consent logic."""
 import pytest
 
-from battery_clinic.unlock.smbus import (
+from voltclinic.unlock.smbus import (
     ConsentRequired,
     FakeSMbusBus,
     FuelGaugeInterop,
