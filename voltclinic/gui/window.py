@@ -73,7 +73,7 @@ class MainWindow(QWidget):
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
             btn.setProperty("pageIndex", idx)
-            btn.clicked.connect(lambda _=False, i=idx: self._go(i, btn))
+            btn.clicked.connect(lambda _=False, i=idx, b=btn: self._go(i, b))
             side.addWidget(btn)
             self._nav_buttons.append(btn)
         side.addStretch(1)
