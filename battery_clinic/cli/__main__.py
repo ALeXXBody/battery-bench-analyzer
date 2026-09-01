@@ -71,9 +71,17 @@ def cmd_smbus(args) -> int:
         bus.blocks[SB_MANUFACTURER_NAME] = b"\x07" + b"TEST-CO"
         bus.blocks[SB_DEVICE_NAME] = b"\x08" + b"DEMO-PAK"
         print("[demo mode: using in-memory fake gauge]")
+    elif args.adapter == "cp2112":
+        from ..unlock.cp2112 import Cp2112Smbus
+        try:
+            bus = Cp2112Smbus()
+        except Exception as e:  # e.g. not on Windows / no adapter present
+            print(f"CP2112 adapter unavailable: {e}")
+            return 1
+        print("[CP2112 USB-SMBus adapter]")
     else:
-        print("No real SMBus adapter driver is bundled. Use --demo to see the "
-              "read path, or implement SMbusBus for your adapter.")
+        print("Use --demo for the fake gauge, or --adapter cp2112 for a "
+              "real CP2112 USB-SMBus adapter (Windows HID).")
         return 1
 
     gauge = FuelGaugeInterop(bus)
@@ -102,8 +110,11 @@ def main(argv=None) -> int:
     p_regen.add_argument("--cycles", type=int, default=3, help="max cycles")
     p_regen.set_defaults(func=cmd_regen)
 
-    p_smbus = sub.add_parser("smbus", help="probe a Smart Battery gauge (demo)")
-    p_smbus.add_argument("--demo", action="store_true", help="use the fake in-memory bus")
+    p_smbus = sub.add_parser("smbus", help="probe a Smart Battery gauge")
+    adapter = p_smbus.add_mutually_exclusive_group()
+    adapter.add_argument("--demo", action="store_true", help="use the fake in-memory bus")
+    adapter.add_argument("--adapter", choices=["cp2112"], default="cp2112",
+                         help="real SMBus adapter driver (Windows HID)")
     p_smbus.set_defaults(func=cmd_smbus)
 
     args = parser.parse_args(argv)

@@ -25,9 +25,11 @@ vendor's battery tooling.
   re-learns full-charge capacity and improves reported health. Runs under a
   power-policy guard so the laptop never sleeps mid-cycle.
 - **Repair / Unlock (hooks)** — A documented extension architecture for optional
-  SMBus-fuel-gauge interop. Solder-and-adapter work on the battery pack itself
-  is out of scope for safety and licensing reasons; the hooks let skilled users
-  plug in their own protocol modules. See [`docs/UNLOCK.md`](docs/UNLOCK.md).
+  SMBus-fuel-gauge interop, including a ready-made **CP2112 USB-to-SMBus** adapter
+  driver (Windows HID, no vendor driver needed). Solder-and-adapter work on the
+  battery pack itself is out of scope for safety and licensing reasons; the hooks
+  let skilled users plug in their own protocol modules.
+  See [`docs/UNLOCK.md`](docs/UNLOCK.md).
 
 ## Important safety & legality note
 

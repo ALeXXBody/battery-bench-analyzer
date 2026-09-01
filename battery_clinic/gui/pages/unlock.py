@@ -9,6 +9,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -61,14 +62,27 @@ class UnlockPage(QWidget):
         d = QVBoxLayout(demo_card)
         demo_label = QLabel("Inspect a battery gauge (demo uses an in-memory fake):")
         d.addWidget(demo_label)
+
+        sel_row = QHBoxLayout()
+        self.adapter_box = QComboBox()
+        self.adapter_box.addItem("Demo gauge (in-memory fake)")
+        self.adapter_box.addItem("CP2112 USB-SMBus adapter")
+        self.adapter_box.setEnabled(False)
+        sel_row.addWidget(QLabel("Adapter:"))
+        sel_row.addWidget(self.adapter_box, 1)
         btn_row = QHBoxLayout()
         self.probe_btn = QPushButton("Probe Gauge")
         self.probe_btn.setObjectName("primary")
         self.probe_btn.clicked.connect(self._probe)
         btn_row.addWidget(self.probe_btn)
         btn_row.addStretch(1)
+        d.addLayout(sel_row)
         d.addLayout(btn_row)
         lay.addWidget(demo_card)
+
+        self.detect_btn = QPushButton("Detect CP2112 adapter")
+        self.detect_btn.clicked.connect(self._detect)
+        lay.addWidget(self.detect_btn)
 
         self.output = QTextEdit()
         self.output.setReadOnly(True)
@@ -87,19 +101,47 @@ class UnlockPage(QWidget):
         w.addWidget(self.write_btn)
         lay.addWidget(write_card)
 
+    def _detect(self) -> None:
+        from ...unlock.cp2112 import Cp2112Smbus
+        try:
+            adapters = Cp2112Smbus.find_adapters()
+        except Exception as exc:  # noqa: BLE001
+            self.output.append(f"[CP2112 detect failed:] {exc}")
+            return
+        if adapters:
+            self.adapter_box.setCurrentIndex(1)
+            self.adapter_box.setEnabled(True)
+            self.output.setPlainText(
+                "CP2112 adapter detected:\n" +
+                "\n".join(f"  {p}  (VID 0x{v:04X} / PID 0x{i:04X})"
+                          for p, v, i in adapters) +
+                "\n\nClick 'Probe Gauge' to read via the real adapter.")
+        else:
+            self.adapter_box.setCurrentIndex(0)
+            self.output.setPlainText(
+                "No CP2112 adapter found (VID 0x10C4 / PID 0xEA90).\n"
+                "The demo gauge is selected; plug in a CP2112 and re-detect.")
+
     def _probe(self) -> None:
         bus: SMbusBus
+        use_real = self.adapter_box.currentIndex() == 1
+        suffix = "(demo data; wire your own SMbusBus driver for real hardware)"
         try:
-            bus = FakeSMbusBus(regs={
-                SB_SERIAL_NUMBER: 0x1234,
-                SB_DESIGN_CAPACITY: 4200,
-                SB_FULL_CHARGE_CAPACITY: 3100,
-                SB_CYCLE_COUNT: 402,
-            })
-            bus.blocks[SB_MANUFACTURER_NAME] = b"\x07" + b"TEST-CO"
-            bus.blocks[SB_DEVICE_NAME] = b"\x08" + b"DEMO-PAK"
+            if use_real:
+                from ...unlock.cp2112 import Cp2112Smbus
+                bus = Cp2112Smbus()
+                suffix = "(real CP2112 USB-SMBus adapter)"
+            else:
+                bus = FakeSMbusBus(regs={
+                    SB_SERIAL_NUMBER: 0x1234,
+                    SB_DESIGN_CAPACITY: 4200,
+                    SB_FULL_CHARGE_CAPACITY: 3100,
+                    SB_CYCLE_COUNT: 402,
+                })
+                bus.blocks[SB_MANUFACTURER_NAME] = b"\x07" + b"TEST-CO"
+                bus.blocks[SB_DEVICE_NAME] = b"\x08" + b"DEMO-PAK"
         except Exception as exc:  # noqa: BLE001
-            self.output.append(f"[demo init failed:] {exc}")
+            self.output.append(f"[init failed:] {exc}")
             return
 
         self.gauge = FuelGaugeInterop(bus)
@@ -114,7 +156,7 @@ class UnlockPage(QWidget):
             f"Full capacity:   {info.full_capacity_mah} mAh" if info.full_capacity_mah is not None else "Full: unknown",
             f"Cycle count:     {info.cycle_count}" if info.cycle_count is not None else "Cycles: unknown",
             "",
-            "(demo data; wire your own SMbusBus driver for real hardware)",
+            suffix,
         ]
         self.output.setPlainText("\n".join(lines))
 
