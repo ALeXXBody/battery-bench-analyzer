@@ -1,108 +1,219 @@
-"""Analyze page: shows battery health and capacity read from the OS."""
+"""Bench Analyzer page: connect to an out-of-circuit battery's gauge.
+
+The battery sits on the bench wired to a CP2112 USB-SMBus adapter (or the
+built-in demo gauge). This page opens the session, shows the identity block
+and live telemetry, and shares the session with the other pages.
+"""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QComboBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from ...core.reader import BatteryReader
+from ...core.bench import GaugeSession, SessionHolder
+from ...unlock.smbus import SMbusError
 from ..widgets import card, stat_card, stat_row
 
 
-def _fmt(v, unit, suffix=""):
-    return f"{v:.0f} {unit}" if v is not None else "—"
+def _fmt(v, unit, digits=0):
+    return f"{v:.{digits}f} {unit}" if v is not None else "—"
 
 
 class AnalyzePage(QWidget):
-    def __init__(self, reader: BatteryReader):
+    def __init__(self, bench: SessionHolder):
         super().__init__()
         self.setObjectName("content")
-        self.reader = reader
+        self.bench = bench
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(24, 24, 24, 24)
         outer.setSpacing(16)
 
         header = QHBoxLayout()
-        title = QLabel("Battery Analysis")
+        title = QLabel("Bench Analyzer")
         title.setObjectName("sectionHeader")
-        self.refresh_btn = QPushButton("Refresh")
-        self.refresh_btn.setObjectName("primary")
-        self.refresh_btn.clicked.connect(self.refresh)
         header.addWidget(title)
         header.addStretch(1)
-        header.addWidget(self.refresh_btn)
         outer.addLayout(header)
 
-        self.backend_label = QLabel("")
-        outer.addWidget(self.backend_label)
+        info = QLabel(
+            "Battery out of the device, on the bench: wire the pack's SMBus "
+            "(SCL, SDA, GND) to the CP2112 adapter and connect. The gauge is "
+            "usually at address 0x0B.")
+        info.setWordWrap(True)
+        outer.addWidget(info)
 
-        # Stable container for the stat cards; cleared on each refresh.
-        self.stats_slot = QWidget()
-        self.stats_vbox = QVBoxLayout(self.stats_slot)
-        self.stats_vbox.setContentsMargins(0, 0, 0, 0)
-        self.stats_vbox.setSpacing(12)
-        outer.addWidget(self.stats_slot)
+        # --- connection row ---
+        conn = card()
+        row = QHBoxLayout(conn)
+        self.adapter_box = QComboBox()
+        self.adapter_box.addItem("Demo gauge (no hardware)")
+        self.adapter_box.addItem("CP2112 USB-SMBus adapter")
+        self.addr_edit = QLineEdit("0x0B")
+        self.addr_edit.setFixedWidth(70)
+        self.connect_btn = QPushButton("Connect")
+        self.connect_btn.setObjectName("primary")
+        self.connect_btn.clicked.connect(self._connect)
+        self.disconnect_btn = QPushButton("Disconnect")
+        self.disconnect_btn.setEnabled(False)
+        self.disconnect_btn.clicked.connect(self._disconnect)
+        self.scan_btn = QPushButton("Scan addresses")
+        self.scan_btn.clicked.connect(self._scan)
+        row.addWidget(QLabel("Adapter:"))
+        row.addWidget(self.adapter_box)
+        row.addWidget(QLabel("Address:"))
+        row.addWidget(self.addr_edit)
+        row.addWidget(self.connect_btn)
+        row.addWidget(self.disconnect_btn)
+        row.addWidget(self.scan_btn)
+        row.addStretch(1)
+        outer.addWidget(conn)
 
+        self.banner = QLabel("Not connected.")
+        self.banner.setWordWrap(True)
+        outer.addWidget(self.banner)
+
+        # --- live telemetry ---
+        live_row = QHBoxLayout()
+        self.live_cards = [
+            stat_card("Voltage", "—"),
+            stat_card("Current", "—"),
+            stat_card("Temperature", "—"),
+            stat_card("Charge", "—"),
+            stat_card("Status", "—"),
+        ]
+        for c in self.live_cards:
+            live_row.addWidget(c)
+        outer.addLayout(live_row)
+
+        # --- identity ---
         self.detail_card = card()
-        self.detail_grid = QGridLayout(self.detail_card)
-        self.detail_grid.setContentsMargins(16, 14, 16, 14)
-        self.detail_grid.setHorizontalSpacing(16)
-        self.detail_grid.setVerticalSpacing(10)
+        g = QGridLayout(self.detail_card)
+        g.setContentsMargins(16, 14, 16, 14)
+        g.setHorizontalSpacing(16)
+        g.setVerticalSpacing(10)
+        self._grid = g
         outer.addWidget(self.detail_card)
         outer.addStretch(1)
 
-        self.refresh()
+        self._timer = QTimer(self)
+        self._timer.setInterval(1000)
+        self._timer.timeout.connect(self._poll_live)
 
-    def _clear_stats(self) -> None:
-        while self.stats_vbox.count():
-            item = self.stats_vbox.takeAt(0)
-            w = item.widget()
-            if w is not None:
-                w.deleteLater()
+    # -- connection --
 
-    def refresh(self) -> None:
-        self._clear_stats()
-        batteries = self.reader.refresh()
-        if not batteries:
-            self.backend_label.setText(
-                f"Backend: {self.reader.backend_name} — no battery detected. "
-                "(This snapshot is only meaningful on a Windows laptop with a battery.)"
-            )
-            self.stats_vbox.addWidget(stat_card(
-                "No battery", "Nothing to show on this host."))
+    def _selected_adapter(self) -> str:
+        return "demo" if self.adapter_box.currentIndex() == 0 else "cp2112"
+
+    def _selected_addr(self) -> int:
+        try:
+            return int(self.addr_edit.text().strip(), 16)
+        except ValueError:
+            return 0x0B
+
+    def _connect(self) -> None:
+        try:
+            session = GaugeSession.open(self._selected_adapter(),
+                                        self._selected_addr())
+        except SMbusError as exc:
+            self.banner.setText(f"Connect failed: {exc}")
             return
+        except Exception as exc:  # noqa: BLE001
+            self.banner.setText(f"Connect failed: {exc}")
+            return
+        self.bench.session = session
+        self._set_connected(True)
+        demo = session.adapter_name == "demo"
+        self.banner.setText(
+            "Connected to the DEMO gauge — everything works, no hardware."
+            if demo else
+            f"Connected via {session.adapter_name} at 0x{session.addr:02X}.")
+        self._fill_identity()
 
-        bat = batteries[0]
-        self.backend_label.setText(f"Backend: {self.reader.backend_name}")
+    def _disconnect(self) -> None:
+        if self.bench.session:
+            self.bench.session.close()
+            self.bench.session = None
+        self._set_connected(False)
+        self.banner.setText("Not connected.")
 
-        soh = bat.soh_percent
-        health_row = QHBoxLayout()
-        health_row.setSpacing(12)
-        cards = [
-            stat_card("State of Health",
-                      f"{soh:.1f}%" if soh is not None else "—", accent=True),
-            stat_card("Health", bat.health_label),
-            stat_card("Remaining",
-                      f"{bat.remaining_percent:.0f}%" if bat.remaining_percent is not None else "—"),
-            stat_card("Chemistry", bat.chemistry.value),
-        ]
-        for c in cards:
-            health_row.addWidget(c)
-        self.stats_vbox.addLayout(health_row)
+    def _scan(self) -> None:
+        if not self.bench.session:
+            QMessageBox.information(self, "Scan", "Connect an adapter first.")
+            return
+        found = self.bench.session.scan()
+        if found is None:
+            self.banner.setText("Scan: no gauge answered on any known address.")
+        else:
+            self.addr_edit.setText(f"0x{found:02X}")
+            self.banner.setText(f"Scan: gauge answered at 0x{found:02X}.")
+            self._fill_identity()
 
-        g = self.detail_grid
-        stat_row("Manufacturer", g, 0, bat.manufacturer)
-        stat_row("Serial", g, 1, bat.serial_number)
-        stat_row("Design capacity", g, 2, _fmt(bat.design_capacity_mwh, "mWh"))
-        stat_row("Full charge capacity", g, 3, _fmt(bat.full_capacity_mwh, "mWh"))
-        stat_row("Charge rate", g, 4, _fmt(bat.charge_rate_mw, "mW"))
-        stat_row("Discharge rate", g, 5, _fmt(bat.discharge_rate_mw, "mW"))
-        stat_row("Cycle count", g, 6, str(bat.cycle_count) if bat.cycle_count is not None else "—")
-        stat_row("Firmware", g, 7, bat.firmware_version or "—")
+    def _set_connected(self, on: bool) -> None:
+        self.connect_btn.setEnabled(not on)
+        self.disconnect_btn.setEnabled(on)
+        self.scan_btn.setEnabled(on)
+        self.adapter_box.setEnabled(not on)
+        self.addr_edit.setEnabled(not on)
+        if on:
+            self._timer.start()
+            self._poll_live()
+        else:
+            self._timer.stop()
+            for c in self.live_cards:
+                c.set_value("—")
+
+    # -- data --
+
+    def _poll_live(self) -> None:
+        session = self.bench.session
+        if session is None:
+            return
+        g = session.gauge
+        self.live_cards[0].set_value(_fmt(g.voltage_mv(), "mV"))
+        cur = g.current_ma()
+        if cur is None:
+            self.live_cards[1].set_value("—")
+        else:
+            self.live_cards[1].set_value(f"{cur:+.0f} mA")
+        self.live_cards[2].set_value(_fmt(g.temperature_c(), "°C", 1))
+        soc = g.relative_soc()
+        self.live_cards[3].set_value(f"{soc:.0f}%" if soc is not None else "—")
+        flags = g.status_flags()
+        self.live_cards[4].set_value(", ".join(flags).lower() or "idle")
+
+    def _fill_identity(self) -> None:
+        session = self.bench.session
+        if session is None:
+            return
+        try:
+            info = session.snapshot()
+        except SMbusError as exc:
+            self.banner.setText(f"Read failed: {exc}")
+            return
+        g = self._grid
+        stat_row("Manufacturer", g, 0, info.manufacturer)
+        stat_row("Device name", g, 1, info.name)
+        stat_row("Chemistry", g, 2, info.chemistry.value)
+        stat_row("Serial", g, 3, str(info.serial_number))
+        stat_row("Manufacture date", g, 4, info.manufacture_date or "—")
+        stat_row("Design voltage", g, 5,
+                 _fmt(info.design_voltage_mv, "mV"))
+        stat_row("Design capacity", g, 6,
+                 f"{info.raw.get('design_capacity_mah', '—')} mAh")
+        stat_row("Full charge capacity", g, 7,
+                 f"{info.raw.get('full_charge_capacity_mah', '—')} mAh")
+        stat_row("Cycle count", g, 8,
+                 str(info.cycle_count) if info.cycle_count is not None else "—")
+        soh = info.soh_percent
+        stat_row("State of health", g, 9,
+                 f"{info.health_label} ({soh:.1f}%)" if soh is not None else "—")

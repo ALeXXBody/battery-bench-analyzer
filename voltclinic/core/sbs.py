@@ -1,0 +1,335 @@
+"""Smart Battery Data (SBS) register access.
+
+Implements the public Smart Battery Data Specification v1.1 register set
+(SBS Implementers Forum) on top of any ``SMbusBus`` transport - which is how
+VoltClinic talks to a battery on the bench: the pack's fuel gauge is wired to
+a CP2112 USB-SMBus adapter and addressed at the SBS default ``0x0B``.
+
+Register conventions (SBS v1.1):
+- word registers, little-endian on the wire (handled by SMbusBus.read_word)
+- capacities in mAh by default, or 10 mWh when BatteryMode.CAPACITY_MODE=1
+- temperature in 0.1 K
+- current in mA, signed (positive = charging, negative = discharging)
+- strings as SMBus block reads whose first byte is the length
+"""
+from __future__ import annotations
+
+from typing import List, Optional
+
+from .models import BatteryInfo, ChargeState, normalize_chemistry
+from ..unlock.smbus import SMbusBus, SMbusError
+
+# --- SBS register map (Smart Battery Data spec v1.1) -----------------------
+SBS_MANUFACTURER_ACCESS = 0x00
+SBS_REMAINING_CAPACITY_ALARM = 0x01
+SBS_REMAINING_TIME_ALARM = 0x02
+SBS_BATTERY_MODE = 0x03
+SBS_AT_RATE = 0x04
+SBS_AT_RATE_TIME_TO_FULL = 0x05
+SBS_AT_RATE_TIME_TO_EMPTY = 0x06
+SBS_AT_RATE_OK = 0x07
+SBS_TEMPERATURE = 0x08
+SBS_VOLTAGE = 0x09
+SBS_CURRENT = 0x0A
+SBS_RELATIVE_SOC = 0x0B
+SBS_ABSOLUTE_SOC = 0x0C
+SBS_REMAINING_CAPACITY = 0x0D
+SBS_FULL_CHARGE_CAPACITY = 0x0E
+SBS_RUN_TIME_TO_EMPTY = 0x0F
+SBS_AVERAGE_TIME_TO_EMPTY = 0x10
+SBS_AVERAGE_TIME_TO_FULL = 0x11
+SBS_CHARGING_CURRENT = 0x12
+SBS_CHARGING_VOLTAGE = 0x13
+SBS_BATTERY_STATUS = 0x14
+SBS_CYCLE_COUNT = 0x15
+SBS_DESIGN_CAPACITY = 0x16
+SBS_DESIGN_VOLTAGE = 0x17
+SBS_SPECIFICATION_INFO = 0x18
+SBS_MANUFACTURE_DATE = 0x19
+SBS_SERIAL_NUMBER = 0x1A
+SBS_MANUFACTURER_NAME = 0x20
+SBS_DEVICE_NAME = 0x21
+SBS_DEVICE_CHEMISTRY = 0x22
+SBS_MANUFACTURER_DATA = 0x23
+
+# BatteryMode bits
+BATTERY_MODE_CAPACITY_MODE = 1 << 7   # 0 = mAh, 1 = 10 mWh
+BATTERY_MODE_CHARGER_MODE = 1 << 13
+BATTERY_MODE_ALARM_MODE = 1 << 15
+
+# BatteryStatus bits (0x14)
+BS_ERROR = 1 << 15
+BS_FULLY_DISCHARGED = 1 << 14
+BS_FULLY_CHARGED = 1 << 13
+BS_DISCHARGING = 1 << 12
+BS_INITIALIZATION = 1 << 11
+BS_REMAINING_TIME_ALARM = 1 << 10
+BS_REMAINING_CAPACITY_ALARM = 1 << 9
+# bits 8..0 are manufacturer / chemistry specific
+
+# Typical gauge addresses on laptop packs (SBS default first)
+DEFAULT_GAUGE_ADDR = 0x0B
+SCAN_ADDRESSES = (0x0B, 0x08, 0x09, 0x0A, 0x0C, 0x0D, 0x0E, 0x0F)
+
+BLOCK_MAX = 32
+
+
+def to_signed16(v: int) -> int:
+    return v - 0x10000 if v > 0x7FFF else v
+
+
+def raw_temp_to_celsius(raw: int) -> float:
+    return raw / 10.0 - 273.15
+
+
+def decode_status(status: int) -> List[str]:
+    flags = []
+    if status & BS_ERROR:
+        flags.append("ERROR")
+    if status & BS_FULLY_DISCHARGED:
+        flags.append("FULLY_DISCHARGED")
+    if status & BS_FULLY_CHARGED:
+        flags.append("FULLY_CHARGED")
+    if status & BS_DISCHARGING:
+        flags.append("DISCHARGING")
+    if status & BS_INITIALIZATION:
+        flags.append("INITIALIZATION")
+    if status & BS_REMAINING_TIME_ALARM:
+        flags.append("TIME_ALARM")
+    if status & BS_REMAINING_CAPACITY_ALARM:
+        flags.append("CAPACITY_ALARM")
+    return flags
+
+
+def charge_state_from(status: int, current_ma: Optional[int]) -> ChargeState:
+    if status & BS_DISCHARGING or (current_ma is not None and current_ma < 0):
+        return ChargeState.DISCHARGING
+    if current_ma is not None and current_ma > 0:
+        return ChargeState.CHARGING
+    if status & BS_FULLY_CHARGED:
+        return ChargeState.FULL
+    if status & BS_FULLY_DISCHARGED:
+        return ChargeState.CRITICAL
+    return ChargeState.UNKNOWN
+
+
+def decode_manufacture_date(raw: int) -> Optional[str]:
+    """SBS ManufactureDate: bit0-4 day, 5-8 month, 9-15 year-1980."""
+    if not raw or raw == 0xFFFF:
+        return None
+    day = raw & 0x1F
+    month = (raw >> 5) & 0x0F
+    year = 1980 + (raw >> 9)
+    try:
+        return f"{year:04d}-{month:02d}-{day:02d}"
+    except ValueError:  # pragma: no cover
+        return None
+
+
+class SBSGauge:
+    """Typed reads/writes of the SBS register set over an SMbusBus."""
+
+    def __init__(self, bus: SMbusBus, addr: int = DEFAULT_GAUGE_ADDR):
+        self.bus = bus
+        self.addr = addr
+
+    # --- low-level helpers ---
+
+    def read_word(self, reg: int) -> int:
+        return self.bus.read_word(self.addr, reg)
+
+    def read_word_maybe(self, reg: int) -> Optional[int]:
+        try:
+            return self.read_word(reg)
+        except SMbusError:
+            return None
+
+    def read_block_maybe(self, reg: int, length: int = BLOCK_MAX) -> Optional[bytes]:
+        try:
+            return self.bus.read_block(self.addr, reg, length)
+        except SMbusError:
+            return None
+
+    def write_word(self, reg: int, value: int) -> None:
+        self.bus.write_word(self.addr, reg, value)
+
+    # --- typed register accessors ---
+
+    def temperature_c(self) -> Optional[float]:
+        raw = self.read_word_maybe(SBS_TEMPERATURE)
+        if raw is None or raw in (0, 0xFFFF):
+            return None
+        return raw_temp_to_celsius(raw)
+
+    def voltage_mv(self) -> Optional[float]:
+        raw = self.read_word_maybe(SBS_VOLTAGE)
+        return float(raw) if raw is not None and raw != 0xFFFF else None
+
+    def current_ma(self) -> Optional[int]:
+        raw = self.read_word_maybe(SBS_CURRENT)
+        return to_signed16(raw) if raw is not None and raw != 0xFFFF else None
+
+    def relative_soc(self) -> Optional[float]:
+        raw = self.read_word_maybe(SBS_RELATIVE_SOC)
+        return float(raw) if raw is not None and raw <= 100 else None
+
+    def absolute_soc(self) -> Optional[float]:
+        raw = self.read_word_maybe(SBS_ABSOLUTE_SOC)
+        return float(raw) if raw is not None and raw <= 100 else None
+
+    def battery_status(self) -> Optional[int]:
+        return self.read_word_maybe(SBS_BATTERY_STATUS)
+
+    def status_flags(self) -> List[str]:
+        st = self.battery_status()
+        return decode_status(st) if st is not None else []
+
+    def battery_mode(self) -> Optional[int]:
+        return self.read_word_maybe(SBS_BATTERY_MODE)
+
+    def capacity_mode_is_mwh(self) -> bool:
+        mode = self.battery_mode()
+        return bool(mode is not None and mode & BATTERY_MODE_CAPACITY_MODE)
+
+    def design_voltage_mv(self) -> Optional[float]:
+        raw = self.read_word_maybe(SBS_DESIGN_VOLTAGE)
+        return float(raw) if raw is not None and raw != 0xFFFF else None
+
+    def _cap_raw(self, reg: int) -> Optional[int]:
+        raw = self.read_word_maybe(reg)
+        if raw is None or raw in (0, 0xFFFF):
+            return None
+        return raw
+
+    def design_capacity(self) -> Optional[int]:
+        """DesignCapacity in native units (mAh, or 10 mWh in CAPACITY_MODE)."""
+        return self._cap_raw(SBS_DESIGN_CAPACITY)
+
+    def full_charge_capacity(self) -> Optional[int]:
+        return self._cap_raw(SBS_FULL_CHARGE_CAPACITY)
+
+    def remaining_capacity(self) -> Optional[int]:
+        return self._cap_raw(SBS_REMAINING_CAPACITY)
+
+    def cycle_count(self) -> Optional[int]:
+        raw = self.read_word_maybe(SBS_CYCLE_COUNT)
+        return raw if raw is not None and raw != 0xFFFF else None
+
+    def serial_number(self) -> Optional[str]:
+        raw = self.read_word_maybe(SBS_SERIAL_NUMBER)
+        return f"0x{raw:04X}" if raw is not None and raw != 0xFFFF else None
+
+    def manufacture_date(self) -> Optional[str]:
+        raw = self.read_word_maybe(SBS_MANUFACTURE_DATE)
+        return decode_manufacture_date(raw) if raw is not None else None
+
+    # --- strings (block reads: byte0 = length) ---
+
+    def _read_string(self, reg: int) -> Optional[str]:
+        raw = self.read_block_maybe(reg)
+        if not raw:
+            return None
+        n = raw[0]
+        if n == 0 or n == 0xFF:
+            return None
+        return bytes(raw[1:1 + n]).decode("ascii", "replace").strip("\x00").strip() or None
+
+    def manufacturer_name(self) -> Optional[str]:
+        return self._read_string(SBS_MANUFACTURER_NAME)
+
+    def device_name(self) -> Optional[str]:
+        return self._read_string(SBS_DEVICE_NAME)
+
+    def device_chemistry(self) -> Optional[str]:
+        return self._read_string(SBS_DEVICE_CHEMISTRY)
+
+    def manufacturer_data(self) -> Optional[bytes]:
+        raw = self.read_block_maybe(SBS_MANUFACTURER_DATA)
+        if not raw:
+            return None
+        n = raw[0]
+        return bytes(raw[1:1 + n]) or None
+
+    # --- capacity unit conversion -------------------------------------
+
+    def _to_mwh(self, cap_native: int) -> float:
+        if self.capacity_mode_is_mwh():
+            return float(cap_native) * 10.0
+        nominal = self.design_voltage_mv() or 11100.0  # typical 3S Li-ion
+        return cap_native * nominal / 1000.0
+
+    # --- aggregate snapshot -------------------------------------------
+
+    def is_present(self) -> bool:
+        """Cheap probe: a real SBS gauge answers a Voltage or Status read."""
+        return (self.read_word_maybe(SBS_VOLTAGE) is not None or
+                self.read_word_maybe(SBS_BATTERY_STATUS) is not None)
+
+    def snapshot(self) -> BatteryInfo:
+        """One full read pass -> BatteryInfo (raises SMbusError if absent)."""
+        if not self.is_present():
+            raise SMbusError(f"no SBS gauge answered at 0x{self.addr:02X}")
+
+        info = BatteryInfo(device_index=0)
+        info.name = self.device_name() or f"Gauge 0x{self.addr:02X}"
+        info.manufacturer = self.manufacturer_name() or "Unknown"
+        info.serial_number = self.serial_number() or "Unknown"
+        chem = self.device_chemistry()
+        info.chemistry = normalize_chemistry(chem)
+        if chem:
+            info.raw["chemistry_raw"] = chem
+
+        info.voltage_mv = self.voltage_mv()
+        cur = self.current_ma()
+        info.current_ma = float(cur) if cur is not None else None
+        info.temperature_c = self.temperature_c()
+        info.cycle_count = self.cycle_count()
+        info.relative_soc = self.relative_soc()
+        info.absolute_soc = self.absolute_soc()
+        status = self.battery_status()
+        if status is not None:
+            info.raw["battery_status"] = status
+            info.raw["status_flags"] = " ".join(decode_status(status)) or "none"
+        info.charge_state = charge_state_from(status or 0, cur)
+
+        design = self.design_capacity()
+        full = self.full_charge_capacity()
+        remaining = self.remaining_capacity()
+        if design:
+            info.design_capacity_mwh = self._to_mwh(design)
+            info.raw["design_capacity_mah"] = design
+        if full:
+            info.full_capacity_mwh = self._to_mwh(full)
+            info.raw["full_charge_capacity_mah"] = full
+        if remaining:
+            info.current_mwh = self._to_mwh(remaining)
+            info.raw["remaining_capacity_mah"] = remaining
+
+        info.design_voltage_mv = self.design_voltage_mv()
+        info.manufacture_date = self.manufacture_date()
+        info.raw["capacity_mode_mwh"] = self.capacity_mode_is_mwh()
+
+        if info.voltage_mv is not None and cur:
+            watts = abs(cur) * info.voltage_mv / 1e6
+            if cur > 0:
+                info.charge_rate_mw = watts * 1000.0
+            else:
+                info.discharge_rate_mw = watts * 1000.0
+
+        return info
+
+    # --- guarded write path (SBS ManufacturerAccess) -------------------
+
+    def manufacturer_command(self, word: int) -> None:
+        """Write ManufacturerAccess. Callers MUST be consent-gated."""
+        self.write_word(SBS_MANUFACTURER_ACCESS, word)
+
+
+def scan_for_gauge(bus: SMbusBus,
+                   addresses=SCAN_ADDRESSES) -> Optional[int]:
+    """Return the first address that answers like an SBS gauge, else None."""
+    for addr in addresses:
+        g = SBSGauge(bus, addr)
+        if g.is_present():
+            return addr
+    return None

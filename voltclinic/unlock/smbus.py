@@ -26,14 +26,24 @@ from typing import Callable, Dict, List, Optional
 
 from ..core.models import BatteryInfo
 
-# Smart Battery (SMBus) standard function/register addresses - public spec.
+# Smart Battery Data (SBS) v1.1 register addresses - public spec.
+# NOTE: these MUST match voltclinic.core.sbs (kept in sync by tests).
 SB_MANUFACTURER_ACCESS = 0x00
-SB_REMAINING_CAPACITY = 0x0F
-SB_FULL_CHARGE_CAPACITY = 0x10
-SB_DESIGN_CAPACITY = 0x18
-SB_CYCLE_COUNT = 0x17
-SB_DESIGN_VOLTAGE = 0x19
-SB_SERIAL_NUMBER = 0x1C
+SB_BATTERY_MODE = 0x03
+SB_TEMPERATURE = 0x08
+SB_VOLTAGE = 0x09
+SB_CURRENT = 0x0A
+SB_RELATIVE_SOC = 0x0B
+SB_ABSOLUTE_SOC = 0x0C
+SB_REMAINING_CAPACITY = 0x0D
+SB_FULL_CHARGE_CAPACITY = 0x0E
+SB_BATTERY_STATUS = 0x14
+SB_CYCLE_COUNT = 0x15
+SB_DESIGN_CAPACITY = 0x16
+SB_DESIGN_VOLTAGE = 0x17
+SB_SPECIFICATION_INFO = 0x18
+SB_MANUFACTURE_DATE = 0x19
+SB_SERIAL_NUMBER = 0x1A
 SB_MANUFACTURER_NAME = 0x20
 SB_DEVICE_NAME = 0x21
 SB_DEVICE_CHEMISTRY = 0x22
@@ -79,6 +89,9 @@ class GaugeProbeResult:
     design_capacity_mah: Optional[int] = None
     full_capacity_mah: Optional[int] = None
     cycle_count: Optional[int] = None
+    relative_soc: Optional[int] = None
+    voltage_mv: Optional[int] = None
+    temperature: Optional[float] = None
     registers: Dict[str, int] = field(default_factory=dict)
 
 
@@ -115,6 +128,9 @@ class FuelGaugeInterop:
         res.design_capacity_mah = self._read_maybe(SB_DESIGN_CAPACITY)
         res.full_capacity_mah = self._read_maybe(SB_FULL_CHARGE_CAPACITY)
         res.cycle_count = self._read_maybe(SB_CYCLE_COUNT)
+        res.relative_soc = self._read_maybe(SB_RELATIVE_SOC)
+        res.voltage_mv = self._read_maybe(SB_VOLTAGE)
+        res.temperature = self._temperature_c()
         return res
 
     def read_manufacturer_block(self) -> bytes:
@@ -144,8 +160,14 @@ class FuelGaugeInterop:
         except SMbusError:
             return None
 
+    def _temperature_c(self) -> Optional[float]:
+        raw = self._read_maybe(SB_TEMPERATURE)
+        if raw is None or raw in (0, 0xFFFF):
+            return None
+        return raw / 10.0 - 273.15
+
     def _read_string(self, reg: int) -> str:
-        raw = self._bus.read_block(self._addr, reg, 8)
+        raw = self._bus.read_block(self._addr, reg, 32)
         # SMBus "Bytes" format: first byte = string length, rest are chars.
         if not raw:
             raise SMbusError("empty block")

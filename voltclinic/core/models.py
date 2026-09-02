@@ -69,6 +69,10 @@ class BatteryInfo:
     current_mwh: Optional[float] = None          # remaining energy
     current_ma: Optional[float] = None           # signed; + charge, - discharge
     voltage_mv: Optional[float] = None
+    design_voltage_mv: Optional[float] = None    # SBS DesignVoltage (pack cells)
+    relative_soc: Optional[float] = None         # SBS RelativeStateOfCharge %
+    absolute_soc: Optional[float] = None         # SBS AbsoluteStateOfCharge %
+    manufacture_date: Optional[str] = None       # SBS ManufactureDate ISO date
     temperature_c: Optional[float] = None
     cycle_count: Optional[int] = None
     charge_state: ChargeState = ChargeState.UNKNOWN

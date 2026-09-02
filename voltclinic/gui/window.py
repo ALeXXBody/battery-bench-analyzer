@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import __version__
-from ..core.reader import BatteryReader
+from ..core.bench import SessionHolder
 from .app import resource_path
 from .pages.analyze import AnalyzePage
 from .pages.regen import RegenPage
@@ -23,11 +23,10 @@ from .pages.unlock import UnlockPage
 
 
 class MainWindow(QWidget):
-    def __init__(self, reader: BatteryReader | None = None):
+    def __init__(self):
         super().__init__()
         self.setWindowTitle("VoltClinic")
         self.resize(1100, 720)
-        self.reader = reader or BatteryReader()
         icon_path = resource_path("icon.ico")
         if os.path.exists(icon_path):
             from PySide6.QtGui import QIcon
@@ -54,9 +53,10 @@ class MainWindow(QWidget):
         side.addWidget(ver)
 
         self.stack = QStackedWidget()
-        self.analyze_page = AnalyzePage(self.reader)
-        self.regen_page = RegenPage(self.reader)
-        self.unlock_page = UnlockPage()
+        self.bench = SessionHolder()
+        self.analyze_page = AnalyzePage(self.bench)
+        self.regen_page = RegenPage(self.bench)
+        self.unlock_page = UnlockPage(self.bench)
         self.stack.addWidget(self.analyze_page)
         self.stack.addWidget(self.regen_page)
         self.stack.addWidget(self.unlock_page)
