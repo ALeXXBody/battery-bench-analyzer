@@ -16,6 +16,7 @@ import re
 import subprocess
 import tempfile
 import threading
+import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
@@ -73,13 +74,6 @@ def matches_installer(name: str) -> bool:
     return bool(name.startswith(ASSET_PREFIX) and name.endswith("-setup.exe"))
 
 
-def _platform_asset_filter() -> Callable[[dict], bool]:
-    """Match release assets for this platform's installer."""
-    if platform.system() == "Windows":
-        return lambda a: matches_installer(a.get("name", ""))
-    return lambda a: False
-
-
 def fetch_latest(timeout: int = 15) -> CheckResult:
     """Query GitHub for the latest release and compare with the running version.
 
@@ -97,19 +91,22 @@ def fetch_latest(timeout: int = 15) -> CheckResult:
         tag = rel.get("tag_name", "")
         latest = tag.lstrip("v") if tag else ""
         assets = rel.get("assets", [])
-        filt = _platform_asset_filter()
-        installers = [a["browser_download_url"] for a in assets if filt(a)]
+        installers = [a["browser_download_url"] for a in assets
+                      if matches_installer(a.get("name", ""))]
         info = UpdateInfo(latest_version=latest, tag=tag,
                           release_url=rel.get("html_url", ""),
                           installers=installers)
         return CheckResult(is_newer=is_newer(latest, __version__), update=info)
-    except Exception as exc:  # noqa: BLE001
-        msg = str(exc)
-        if "404" in msg or "HTTP Error 404" in msg:
-            msg = ("release feed not found - the release repository is "
-                   "private or does not exist, so in-app updates are "
-                   "unavailable")
+    except urllib.error.HTTPError as exc:
+        # Show the real HTTP error; add the private-repo hint only as a hint.
+        msg = f"HTTP {exc.code}: {exc.reason}"
+        if exc.code == 404:
+            msg += (" - the release feed was not found; if the release "
+                    "repository is private, in-app updates are unavailable "
+                    "until the feed is reachable")
         return CheckResult(is_newer=False, error=msg)
+    except Exception as exc:  # noqa: BLE001
+        return CheckResult(is_newer=False, error=str(exc))
 
 
 def download(url: str, dest_dir: Optional[str] = None,
