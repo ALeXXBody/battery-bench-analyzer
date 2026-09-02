@@ -9,7 +9,7 @@
 ; Define /DVERSION=x.y.z to control the version (CI passes it from the tag).
 
 #ifndef VERSION
-  #define VERSION "0.3.0"
+  #define VERSION "0.3.1"
 #endif
 
 #define MyAppName "VoltClinic"

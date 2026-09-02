@@ -23,7 +23,12 @@ from typing import Callable, List, Optional
 from . import __version__
 
 # Where VoltClinic publishes installers. Change here if you self-host.
-RELEASE_API = "https://api.github.com/repos/ALeXXBody/voltclinic/releases"
+# Overridable for testing/mirrors: VOLTCLINIC_RELEASE_API
+DEFAULT_RELEASE_API = "https://api.github.com/repos/ALeXXBody/voltclinic/releases"
+
+
+def _release_api() -> str:
+    return os.environ.get("VOLTCLINIC_RELEASE_API", DEFAULT_RELEASE_API)
 
 # Asset filename the updater prefers (matches the Inno Setup output and the
 # version baked into the installer, e.g. VoltClinic-0.2.0-setup.exe).
@@ -82,7 +87,7 @@ def fetch_latest(timeout: int = 15) -> CheckResult:
     so callers (GUI thread, CLI) stay robust offline.
     """
     try:
-        req = urllib.request.Request(RELEASE_API + "/latest",
+        req = urllib.request.Request(_release_api() + "/latest",
                                      headers={"User-Agent": "VoltClinic/" + __version__,
                                               "Accept": "application/vnd.github+json"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -99,7 +104,12 @@ def fetch_latest(timeout: int = 15) -> CheckResult:
                           installers=installers)
         return CheckResult(is_newer=is_newer(latest, __version__), update=info)
     except Exception as exc:  # noqa: BLE001
-        return CheckResult(is_newer=False, error=str(exc))
+        msg = str(exc)
+        if "404" in msg or "HTTP Error 404" in msg:
+            msg = ("release feed not found - the release repository is "
+                   "private or does not exist, so in-app updates are "
+                   "unavailable")
+        return CheckResult(is_newer=False, error=msg)
 
 
 def download(url: str, dest_dir: Optional[str] = None,

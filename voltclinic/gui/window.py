@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import os
+import threading
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -20,6 +21,17 @@ from .app import resource_path
 from .pages.analyze import AnalyzePage
 from .pages.regen import RegenPage
 from .pages.unlock import UnlockPage
+
+
+class _UpdateBridge(QObject):
+    """Marshals updater worker-thread events onto the GUI thread.
+
+    Qt widgets must only be touched from the GUI thread; the updater runs in
+    plain Python threads, so its results travel through these signals.
+    """
+    result = Signal(object)
+    download_progress = Signal(int, int)
+    download_done = Signal(object)
 
 
 class MainWindow(QWidget):
@@ -89,6 +101,13 @@ class MainWindow(QWidget):
 
         self._go(0, self._nav_buttons[0])
 
+        self._update_bridge = _UpdateBridge()
+        self._update_bridge.result.connect(self._on_update_result)
+        self._update_bridge.download_progress.connect(self._on_download_progress)
+        self._update_bridge.download_done.connect(self._on_download_done)
+        self._update_silent = False
+        self._update_test = False
+
     def _go(self, index: int, btn: QPushButton) -> None:
         for b in self._nav_buttons:
             b.setChecked(b is btn)
@@ -97,20 +116,45 @@ class MainWindow(QWidget):
     # -- auto-update --
 
     def trigger_update_check(self, silent: bool = False) -> None:
-        from ..updater import CheckResult, check_in_background
+        from ..updater import check_in_background
+        self._update_test = os.environ.get("BATTERYCLINIC_SELFTEST") == "update"
+        self._update_silent = silent
         self.update_btn.setEnabled(False)
         if not silent:
             self.update_btn.setText("Checking…")
-        self._update_silent = silent
+        # Emitting a signal is thread-safe; the slot runs on the GUI thread.
+        check_in_background(self._update_bridge.result.emit)
 
-        def done(result: CheckResult) -> None:
-            self.update_btn.setEnabled(True)
-            self.update_btn.setText("Check for updates")
-            self._on_update_result(result)
+    def _finish_update_test(self, outcome: str) -> None:
+        try:
+            with open("selftest_ok.txt", "w", encoding="ascii") as f:
+                f.write(f"update-test {outcome}\n")
+        except OSError:
+            pass
+        threading.Thread(target=self._delayed_exit, daemon=True).start()
 
-        check_in_background(done)
+    @staticmethod
+    def _delayed_exit() -> None:
+        import time
+        time.sleep(0.5)
+        os._exit(0)
 
     def _on_update_result(self, result) -> None:
+        self.update_btn.setEnabled(True)
+        self.update_btn.setText("Check for updates")
+
+        if result.error:
+            outcome = f"error: {result.error}"
+        elif result.update is not None and result.is_newer:
+            outcome = (f"update-available: {result.update.latest_version} "
+                       f"({len(result.update.installers)} installer asset(s))")
+        else:
+            outcome = "up-to-date"
+
+        if self._update_test:
+            self._finish_update_test(outcome)
+            return
+
         if result.error:
             if not self._update_silent:
                 QMessageBox.information(self, "VoltClinic",
@@ -139,19 +183,34 @@ class MainWindow(QWidget):
         self._download_and_install(info.installers[0])
 
     def _download_and_install(self, url: str) -> None:
-        from ..updater import download, launch_installer
+        from ..updater import download
         self.update_btn.setEnabled(False)
-        self.update_btn.setText("Downloading…")
-        try:
-            path = download(url, progress=None)
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(self, "Download failed", str(exc))
-            self.update_btn.setEnabled(True)
-            self.update_btn.setText("Check for updates")
-            return
+        self.update_btn.setText("Downloading… 0%")
+
+        def work():
+            try:
+                path = download(
+                    url,
+                    progress=lambda total, done:
+                        self._update_bridge.download_progress.emit(int(total), int(done)))
+                self._update_bridge.download_done.emit(path)
+            except Exception as exc:  # noqa: BLE001
+                self._update_bridge.download_done.emit(exc)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_download_progress(self, total: int, done: int) -> None:
+        pct = int(done * 100 / total) if total else 0
+        self.update_btn.setText(f"Downloading… {pct}%")
+
+    def _on_download_done(self, payload) -> None:
         self.update_btn.setEnabled(True)
         self.update_btn.setText("Check for updates")
-        if launch_installer(path):
+        if isinstance(payload, Exception):
+            QMessageBox.warning(self, "Download failed", str(payload))
+            return
+        from ..updater import launch_installer
+        if launch_installer(payload):
             QMessageBox.information(
                 self, "Updater",
                 "Downloaded. The installer has been launched.\n\n"
@@ -159,5 +218,5 @@ class MainWindow(QWidget):
             self.close()
         else:
             QMessageBox.information(
-                self, "Updater", f"Saved installer to:\n{path}\n\nRun it to install.")
+                self, "Updater", f"Saved installer to:\n{payload}\n\nRun it to install.")
 

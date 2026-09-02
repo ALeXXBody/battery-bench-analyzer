@@ -36,6 +36,7 @@ def resource_path(name: str) -> str:
 
 
 def main() -> int:
+    from PySide6.QtCore import QTimer
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
 
@@ -54,7 +55,12 @@ def main() -> int:
     win = MainWindow()
     win.show()
 
-    if os.environ.get("BATTERYCLINIC_SELFTEST"):
+    selftest = os.environ.get("BATTERYCLINIC_SELFTEST", "")
+    if selftest == "update":
+        # Headless update-flow test: click the real button, the window logs
+        # the outcome to selftest_ok.txt and exits (see MainWindow).
+        QTimer.singleShot(300, win.update_btn.click)
+    elif selftest:
         threading.Thread(target=_selftest_exit, args=(3.0, os.getpid()),
                          daemon=True).start()
     else:
