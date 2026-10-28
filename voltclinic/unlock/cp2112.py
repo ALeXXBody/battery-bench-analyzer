@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ctypes
 import platform
+import re
 import struct
 from ctypes import wintypes
 from typing import List, Optional
@@ -302,13 +303,13 @@ class HidApi:
 
     @staticmethod
     def _path_ids(path: str):
-        vid = pid = 0
-        try:
-            vid = int(path.split("VID_", 1)[1][:4], 16)
-            pid = int(path.split("PID_", 1)[1][:4], 16)
-        except (IndexError, ValueError):
-            pass
-        return vid, pid
+        # Windows emits HID paths as e.g. \\?\hid#vid_10c4&pid_ea90#... —
+        # numbering can be lower- or upper-case depending on stack version;
+        # parse case-insensitively.
+        m = re.search(r"vid_([0-9a-f]{4})&pid_([0-9a-f]{4})", path, re.I)
+        if not m:
+            return 0, 0
+        return int(m.group(1), 16), int(m.group(2), 16)
 
     def open_device(self, path: str, vid: int, pid: int) -> HidDevice:
         handle = self._kernel32.CreateFileW(
