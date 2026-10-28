@@ -26,9 +26,9 @@ jobs:
       - name: Run tests
         run: python -m pytest tests/ -q
 
-      - name: Build onefile EXE (with icon)
+      - name: Build onedir EXE (with icon)
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed `
+          python -m PyInstaller --noconfirm --clean --onedir --windowed `
             --name VoltClinic --icon assets/icon.ico `
             --add-data "assets/icon.ico;voltclinic" run.py
 
@@ -38,7 +38,7 @@ jobs:
           BATTERYCLINIC_SELFTEST: '1'
           QT_QPA_PLATFORM: offscreen
         run: |
-          $job = Start-Process -FilePath "dist\VoltClinic.exe" -PassThru
+          $job = Start-Process -FilePath "dist\VoltClinic\VoltClinic.exe" -PassThru
           Wait-Process -Id $job.Id -Timeout 60 -ErrorAction SilentlyContinue
           if (Test-Path selftest_ok.txt) {
             Get-Content selftest_ok.txt
@@ -65,7 +65,7 @@ jobs:
         with:
           name: VoltClinic-windows
           path: |
-            dist/VoltClinic.exe
+            dist/VoltClinic/
             dist/VoltClinic-*-setup.exe
 
       - name: Attach to release (tags only)
@@ -73,5 +73,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/VoltClinic.exe
             dist/VoltClinic-*-setup.exe

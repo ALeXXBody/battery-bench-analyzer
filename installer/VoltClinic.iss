@@ -32,7 +32,7 @@ DisableProgramGroupPage=yes
 OutputDir=..\dist
 OutputBaseFilename=VoltClinic-{#MyAppVersion}-setup
 SetupIconFile=..\assets\icon.ico
-UninstallDisplayIcon={app}\{#MyAppExe}
+UninstallDisplayIcon={app}\VoltClinic\{#MyAppExe}
 Compression=lzma2/normal
 SolidCompression=yes
 WizardStyle=modern
@@ -48,12 +48,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "..\dist\VoltClinic.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\VoltClinic\*"; DestDir: "{app}\VoltClinic"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\VoltClinic\{#MyAppExe}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\VoltClinic\{#MyAppExe}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExe}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\VoltClinic\{#MyAppExe}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
