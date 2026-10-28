@@ -161,7 +161,9 @@ class AnalyzePage(QWidget):
 
     def _scan(self) -> None:
         if not self.bench.session:
-            QMessageBox.information(self, "Scan", "Connect an adapter first.")
+            QMessageBox.information(self, "Scan",
+                                    "Connect an adapter first, "
+                                    "then scan addresses again.")
             return
         found = self.bench.session.scan()
         if found is not None:

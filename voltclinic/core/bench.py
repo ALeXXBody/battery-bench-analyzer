@@ -205,7 +205,14 @@ class GaugeSession:
                 close()
             raise SMbusError(
                 f"No SBS gauge answered at 0x{addr:02X} on {adapter}. "
-                "Check wiring (SCL/SDA/GND) and the gauge address.")
+                "Check wiring (SCL/SDA/GND), then in this order: "
+                "1) the pack must be powered — a bq40-series gauge goes into "
+                "silent shutdown below ~2.5 V/cell, so charge or supply the "
+                "pack at its normal working voltage first; "
+                "2) scan twice — the clock toggling during a scan wakes a "
+                "sleeping SBS gauge; "
+                "3) if you have no pull-ups on SDA/SCL, add 10k resistors "
+                "or make sure the pack's internal pull-ups have power.")
         return cls(bus, addr, adapter)
 
     def scan(self) -> Optional[int]:
