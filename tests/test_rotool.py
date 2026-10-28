@@ -87,7 +87,8 @@ def test_cp2112_configure_builds_valid_config_report():
     obj._dev = _StubDev()
     obj._clock = 100000
     obj._configure()
-    assert obj._dev.stored and len(obj._dev.stored[0]) == 12
+    rpt = obj._dev.stored[0]
+    assert rpt[0] == 0x06 and len(rpt) == 64  # feature report: ID 0x06 padded
 
 
 def test_rotool_smbus_gated_without_protocol():
