@@ -193,9 +193,6 @@ class GaugeSession:
         elif adapter == "cp2112":
             from ..unlock.cp2112 import Cp2112Smbus
             bus = Cp2112Smbus()
-        elif adapter == "nlba":
-            from ..unlock.nlba import NLBASmbus
-            bus = NLBASmbus()
         else:
             raise SMbusError(f"unknown adapter: {adapter!r}")
         g = SBSGauge(bus, addr)

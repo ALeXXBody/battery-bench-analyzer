@@ -6,7 +6,7 @@ unlock" routine.
 
 ## Why the boundary
 
-Tools such as NLBA1 and similar "battery repair/unlock" software typically:
+Commercial "battery repair/unlock" tools typically:
 
 1. Read the fuel gauge over SMBus.
 2. Write to the gauge's EEPROM to **zero the cycle count** or clear a

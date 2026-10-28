@@ -58,7 +58,6 @@ class AnalyzePage(QWidget):
         self.adapter_box = QComboBox()
         self.adapter_box.addItem("Demo gauge (no hardware)")
         self.adapter_box.addItem("CP2112 USB-SMBus adapter")
-        self.adapter_box.addItem("NLBA USB-SMBus adapter")
         self.addr_edit = QLineEdit("0x0B")
         self.addr_edit.setFixedWidth(70)
         self.connect_btn = QPushButton("Connect")
@@ -113,14 +112,7 @@ class AnalyzePage(QWidget):
     # -- connection --
 
     def _selected_adapter(self) -> str:
-        idx = self.adapter_box.currentIndex()
-        if idx == 0:
-            return "demo"
-        elif idx == 1:
-            return "cp2112"
-        elif idx == 2:
-            return "nlba"
-        return "demo"
+        return "demo" if self.adapter_box.currentIndex() == 0 else "cp2112"
 
     def _selected_addr(self) -> int:
         try:

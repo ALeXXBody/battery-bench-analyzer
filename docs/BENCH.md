@@ -36,7 +36,7 @@ the BatteryStatus alarm flags.
 1. Bench Analyzer page → adapter **CP2112** (or **Demo gauge** without
    hardware) → **Connect**.
 2. Identity block + live telemetry (1 s polling) appear.
-3. CLI equivalent: `voltclinic analyze --adapter cp2112 --watch 30`. You can also use `--adapter nlba` with a NIP/NLBA1 USB battery analyzer.
+3. CLI equivalent: `voltclinic analyze --adapter cp2112 --watch 30`.
 
 ## Calibrate (learn cycle)
 
@@ -49,7 +49,7 @@ the cycle — **you** switch the bench power, the app watches the gauge:
    FullChargeCapacity.
 
 The app records FCC/SoH before and after. CLI: `voltclinic calibrate --adapter
-cp2112 --low 10`. For NLBA: `voltclinic calibrate --adapter nlba --low 10`.
+cp2112 --low 10`.
 
 Safety: the pack's firmware and your bench supply remain the actual limits.
 The app never drives any hardware. Never leave a pack unattended; recycle
