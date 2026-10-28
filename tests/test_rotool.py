@@ -1,0 +1,73 @@
+"""Tests for the ROTOOL serial transport (pure parts, no hardware)."""
+import pytest
+
+from voltclinic.unlock.rotool import (
+    DEFAULT_PORT_NAME,
+    frame_escape,
+    frame_unescape,
+    frame_wrap,
+    frame_wrap_crc,
+    list_rotool_ports,
+    choose_port,
+)
+from voltclinic.unlock.smbus import SMbusError
+
+
+def test_frame_escape_passthrough():
+    assert frame_escape(b"\x01\x02\x7F") == b"\x01\x02\x7F"
+
+
+def test_frame_escape_delimiter_and_escape_byte():
+    assert frame_escape(b"\x7E") == b"\x7D\x5E"
+    assert frame_escape(b"\x7D") == b"\x7D\x5D"
+    assert frame_escape(b"\x7E\x7D\x01") == b"\x7D\x5E\x7D\x5D\x01"
+
+
+def test_frame_unescape_roundtrip():
+    payload = b"\x7E\x7D\x01\x02"
+    assert frame_unescape(frame_escape(payload)) == payload
+
+
+def test_frame_unescape_malformed():
+    with pytest.raises(SMbusError):
+        frame_unescape(b"\x01\x7D")  # escape with no following byte
+
+
+def test_frame_wrap_delimiters():
+    f = frame_wrap(b"\x01\x02\x7E")
+    assert f[0] == 0x7E and f[-1] == 0x7E
+    assert frame_unescape(f[1:-1]) == b"\x01\x02\x7E"
+
+
+def test_frame_wrap_crc_layout():
+    payload = b"\x01\x02"
+    f = frame_wrap_crc(payload)
+    # [0]=7E, [1]=crc, [2:]=escaped payload, [-1]=7E
+    assert f[0] == 0x7E and f[-1] == 0x7E
+    assert frame_unescape(f[2:-1]) == payload
+    assert f[1] == 0x01 ^ 0x02
+
+
+def test_frame_crc_matches_xor():
+    payload = bytes([0x0F, 0xF0, 0xAA])
+    crc = 0
+    for b in payload:
+        crc ^= b
+    assert frame_wrap_crc(payload)[1] == crc
+
+
+def test_choose_port_prefers_explicit():
+    assert choose_port("COM7") == "COM7"
+
+
+def test_choose_port_default_without_detection():
+    # no explicit name; detection result is environment-dependent but must
+    # never raise, and fall back to the documented default when empty.
+    if not list_rotool_ports():
+        assert choose_port(None) == DEFAULT_PORT_NAME
+
+
+def test_rotool_smbus_gated_without_protocol():
+    from voltclinic.unlock.rotool import RoToolSmbus
+    with pytest.raises(SMbusError):
+        RoToolSmbus()

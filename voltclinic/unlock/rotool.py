@@ -1,0 +1,210 @@
+"""ROTOOL bench device transport (serial/COM-port based).
+
+The ROTOOL bench analyzer is a USB device that bridges a USB CDC-style serial
+port to its internal microcontroller. The MCU in turn drives the target
+battery's SMBus (SCL/SDA), cell-voltage sense lines, and the charge/discharge
+power stage. To host software the device therefore appears as a normal COM
+port (a Prolific-class USB-UART bridge; VIDs we know of: 067B/2303).
+
+Layout
+------
+- Part A: pure helpers (port discovery, frame primitives) — unit-tested.
+- Part B: ``RoToolLink`` — opens and manages the serial port.
+- Part C: ``RoToolSmbus(SMbusBus)`` — adapts the link to the bench session.
+
+Protocol status: the MCU's binary protocol is being captured clean-room from
+observed traffic; until the handshake and framing are fully mapped, the
+SMbusBus methods remain gated behind ``protocol_ready`` and raise an explicit
+error instead of writing guesses to the wire. All gauge writes continue to go
+through the consent-gated ``FuelGaugeInterop`` layer.
+
+Clean-room: reimplemented from our own hardware observation and public
+documentation only; no proprietary vendor code is reused.
+"""
+from __future__ import annotations
+
+import abc
+from typing import List, Optional
+
+from .smbus import SMbusBus, SMbusError
+
+# USB identifers of the bridge chip used by ROTOOL hardware (public data).
+ROTOOL_BRIDGE_VID = 0x067B
+ROTOOL_BRIDGE_PID = 0x2303
+
+DEFAULT_BAUD = 115200
+DEFAULT_PORT_NAME = "COM3"
+
+
+# ---------------------------------------------------------------------------
+# Part A - helpers (pure/OS-light, testable)
+# ---------------------------------------------------------------------------
+
+def list_rotool_ports() -> List[str]:
+    """Return serial port names that look like a ROTOOL bridge.
+
+    Detection is by the USB VID:PID of the bridge chip when available;
+    falls back to common vendor-neutral naming on platforms without
+    per-port identity enumeration.
+    """
+    try:
+        from serial.tools import list_ports
+    except ImportError:  # pragma: no cover - pyserial is a core dependency
+        return []
+    found: List[str] = []
+    for p in list_ports.comports():
+        vid = getattr(p, "vid", None)
+        pid = getattr(p, "pid", None)
+        if (vid, pid) == (ROTOOL_BRIDGE_VID, ROTOOL_BRIDGE_PID):
+            found.append(p.device)
+    return found
+
+
+def choose_port(preferred: Optional[str] = None) -> str:
+    """Pick the port to use: explicit > detected > sensible default."""
+    if preferred:
+        return preferred
+    detected = list_rotool_ports()
+    if detected:
+        return detected[0]
+    return DEFAULT_PORT_NAME
+
+
+def frame_escape(data: bytes) -> bytes:
+    """Byte-stuff a payload: 0x7D escapes itself and 0x7E (delimiter)."""
+    out = bytearray()
+    for b in data:
+        if b in (0x7D, 0x7E):
+            out.append(0x7D)
+            out.append(b ^ 0x20)
+        else:
+            out.append(b)
+    return bytes(out)
+
+
+def frame_unescape(data: bytes) -> bytes:
+    """Inverse of :func:`frame_escape`. Raises on malformed escape."""
+    out = bytearray()
+    i = 0
+    while i < len(data):
+        b = data[i]
+        if b == 0x7D:
+            if i + 1 >= len(data):
+                raise SMbusError("ROTOOL: truncated escape at end of frame")
+            out.append(data[i + 1] ^ 0x20)
+            i += 2
+        else:
+            out.append(b)
+            i += 1
+    return bytes(out)
+
+
+def frame_wrap(payload: bytes) -> bytes:
+    """Delimit + escape a payload into a full frame (0x7E ... 0x7E)."""
+    return b"\x7E" + frame_escape(payload) + b"\x7E"
+
+
+def frame_wrap_crc(payload: bytes) -> bytes:
+    """As frame_wrap, with a trailing XOR checksum inside the delimiters."""
+    crc = 0
+    for b in payload:
+        crc ^= b
+    payload = bytes([crc]) + payload
+    return b"\x7E" + frame_escape(payload) + b"\x7E"
+
+
+# ---------------------------------------------------------------------------
+# Part B - serial link
+# ---------------------------------------------------------------------------
+
+class RoToolLink:
+    """Owns the COM-port connection to the ROTOOL device."""
+
+    def __init__(self, port: Optional[str] = None, baud: int = DEFAULT_BAUD):
+        self.port_name = choose_port(port)
+        self.baud = baud
+        self._ser = None
+
+    def open(self) -> None:
+        try:
+            import serial
+        except ImportError as e:  # pragma: no cover
+            raise SMbusError(f"pyserial required for ROTOOL link: {e}") from e
+        try:
+            self._ser = serial.Serial(self.port_name, self.baud, timeout=1)
+        except Exception as e:
+            raise SMbusError(f"ROTOOL: cannot open {self.port_name}: {e}") from e
+
+    def close(self) -> None:
+        if self._ser is not None:
+            try:
+                self._ser.close()
+            except Exception:
+                pass
+            self._ser = None
+
+    @property
+    def opened(self) -> bool:
+        return self._ser is not None and self._ser.is_open
+
+    def write(self, data: bytes) -> int:
+        if not self.opened:
+            raise SMbusError("ROTOOL: link not open")
+        return self._ser.write(data)
+
+    def read(self, size: int) -> bytes:
+        if not self.opened:
+            raise SMbusError("ROTOOL: link not open")
+        return self._ser.read(size)
+
+    def set_dtr(self, on: bool) -> None:
+        if self.opened:
+            self._ser.dtr = on
+
+    def set_rts(self, on: bool) -> None:
+        if self.opened:
+            self._ser.rts = on
+
+
+# ---------------------------------------------------------------------------
+# Part C - SMbusBus adapter
+# ---------------------------------------------------------------------------
+
+class RoToolSmbus(SMbusBus):
+    """ROTOOL adapter presented as a bench SMBus backend.
+
+    Gated by ``protocol_ready``: the MCU framing is captured clean-room and
+    will be enabled here once verified. This keeps exploratory bytes off the
+    wire until then, and keeps all writes behind the app-wide consent gate.
+    """
+
+    protocol_ready = False
+
+    def __init__(self, link: Optional[RoToolLink] = None):
+        self.link = link or RoToolLink()
+        self.link.open()
+        if not self.protocol_ready:
+            self.link.close()
+            raise SMbusError(
+                "ROTOOL adapter: handshake/framing capture not complete yet; "
+                "adapter disabled until the protocol is verified.")
+
+    # -- SMbusBus interface (all gated) --
+
+    def read_word(self, addr: int, reg: int) -> int:
+        if not self.protocol_ready:
+            raise SMbusError("ROTOOL: protocol not ready")
+        raise SMbusError("ROTOOL: read_word not implemented yet")
+
+    def write_word(self, addr: int, reg: int, value: int) -> None:
+        if not self.protocol_ready:
+            raise SMbusError("ROTOOL: protocol not ready")
+        raise SMbusError("ROTOOL: write_word not implemented yet")
+
+    def read_block(self, addr: int, reg: int, length: int) -> bytes:
+        if not self.protocol_ready:
+            raise SMbusError("ROTOOL: protocol not ready")
+        raise SMbusError("ROTOOL: read_block not implemented yet")
+
+    def close(self) -> None:
+        self.link.close()

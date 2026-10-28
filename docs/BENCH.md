@@ -38,6 +38,12 @@ the BatteryStatus alarm flags.
 2. Identity block + live telemetry (1 s polling) appear.
 3. CLI equivalent: `voltclinic analyze --adapter cp2112 --watch 30`.
 
+> **ROTOOL adapter**: the ROTOOL USB bench analyzer (serial/COM-port device)
+> is selectable in the adapter list, but is disabled until its MCU handshake
+> and framing are fully captured and verified; it then reads the same SBS
+> register set through its own link layer. Writes on any adapter stay behind
+> the explicit consent gate.
+
 ## Calibrate (learn cycle)
 
 A gauge re-learns true capacity from a full learn cycle. VoltClinic *guides*
