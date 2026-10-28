@@ -26,6 +26,26 @@ def _selftest_exit(delay_s: float, pid: int) -> None:
     os._exit(0)
 
 
+def _install_crash_hook() -> None:
+    """Route every uncaught Python error into diag.log + a user dialog."""
+    from ..core.diaglog import log
+
+    def hook(kind, value, tb):
+        import traceback
+        detail = "".join(traceback.format_exception(kind, value, tb))
+        log("UNCAUGHT EXCEPTION:", *detail.rstrip().splitlines())
+        try:
+            from PySide6.QtWidgets import QMessageBox
+            box = QMessageBox(QMessageBox.Critical, "VoltClinic error",
+                              f"{kind.__name__}: {value}")
+            box.setDetailedText(detail)
+            box.exec()
+        except Exception:  # noqa: BLE001 - dialog unavailable (headless)
+            pass
+
+    sys.excepthook = hook
+
+
 def resource_path(name: str) -> str:
     """Resolve a bundled resource path in source and frozen (PyInstaller) modes."""
     base = getattr(sys, "_MEIPASS", None)
@@ -42,6 +62,11 @@ def main() -> int:
 
     from .theme import DARK_THEME
     from .window import MainWindow
+
+    _install_crash_hook()
+
+    from ..core.diaglog import log as diag
+    diag(f"VoltClinic {__version__} started (frozen={bool(getattr(sys, 'frozen', False))})")
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoltClinic")
