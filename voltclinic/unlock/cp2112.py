@@ -380,6 +380,9 @@ class Cp2112Smbus(SMbusBus):
         api = self._api()
         self._api = api
         self._clock = clock_hz
+        seen = api.enumerate_hid_paths()
+        self._diag("cp2112: enumerate result: "
+                   + (", ".join(f"{v:04X}:{p:04X}" for _, v, p in seen) or "<none>"))
         if device is not None:
             self._dev = device
             self._owned = False
@@ -387,8 +390,20 @@ class Cp2112Smbus(SMbusBus):
             self._dev = self._open_first(api)
             self._owned = True
         if self._dev is None:
-            raise SMbusError("no CP2112 adapter found")
+            self._diag("cp2112: could not open any CP2112 interface "
+                       f"(VID {CP2112_VID:04X} PID {CP2112_PID:04X})")
+            raise SMbusError(
+                "no CP2112 adapter found — make sure no other program "
+                "(e.g. the Silicon Labs demo tool) has the device open.")
         self._configure()
+
+    @staticmethod
+    def _diag(message: str) -> None:
+        try:
+            from ..core.diaglog import log
+            log(message)
+        except Exception:  # noqa: BLE001 - diagnostics must never raise
+            pass
 
     @staticmethod
     def _api() -> HidApi:
@@ -419,7 +434,8 @@ class Cp2112Smbus(SMbusBus):
             if vid == CP2112_VID and pid == CP2112_PID:
                 try:
                     return api.open_device(path, vid, pid)
-                except HidException:
+                except HidException as exc:
+                    Cp2112Smbus._diag(f"cp2112: open failed for {path}: {exc}")
                     continue
         return None
 
