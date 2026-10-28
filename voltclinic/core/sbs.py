@@ -333,3 +333,51 @@ def scan_for_gauge(bus: SMbusBus,
         if g.is_present():
             return addr
     return None
+
+
+def scan_for_gauge_detailed(bus: SMbusBus,
+                            addresses=SCAN_ADDRESSES) -> list:
+    """Probe every address, returning [(addr, status_code), ...] failures.
+
+    The batch scan toggles the bus clocks on every address, which doubles as
+    a wake-up sequence for sleeping SBS gauges (e.g. a bq40z-series in
+    SMBus-sleep). Callers combine this with scan_for_gauge to probe first,
+    then only report details if nothing answered.
+    """
+    findings = []
+    for addr in addresses:
+        try:
+            bus.read_word(addr, SBS_VOLTAGE)
+        except SMbusError as exc:
+            findings.append((addr, exc.status if isinstance(exc.status, int)
+                             else -1))
+    return findings
+
+
+def describe_scan(findings: list) -> str:
+    """Human-readable hint table from a scan_for_gauge_detailed result."""
+    codes = {c for _, c in findings}
+    lines = []
+    if codes <= {0x06} or codes == {-1}:
+        lines.append("every address NAKed: the gauge did not answer the "
+                     "SMBus code — most likely causes, in order:")
+        lines.append("1) the pack is unpowered (cells below ~2.5 V/cell "
+                     "means the gauge is shut down — charge the pack briefly)")
+        lines.append("2) the gauge has fallen asleep and woke but no host "
+                     "answered (the scan just toggled clock; scan again)")
+        lines.append("3) missing pull-ups on SDA/SCL (the CP2112 board has "
+                     "protoboarded pull-ups; bare chips need external 10k)")
+    elif 0x07 in codes or 0x04 in codes:
+        lines.append("the adapter saw bus-level errors (CRC/bus): typical "
+                     "of swapped SDA/SCL, a broken pull-up resistor, or "
+                     "two devices driving the bus. Unpower everything and "
+                     "re-wire; never connect SDA/SCL to a voltage source.")
+    elif 0x05 in codes:
+        lines.append("ACK error on targeted data: the slave is not at that "
+                     "address; then the gate was stuck partially.")
+    else:
+        lines.append("mixed adapter statuses; retry the scan, and if it "
+                     "persists share these codes with support.")
+    detail = ", ".join(f"0x{a:02X}:{c:02X}" if c >= 0 else f"0x{a:02X}:?" for a, c in findings)
+    lines.append(f"detail: {detail}")
+    return "\n".join(lines)

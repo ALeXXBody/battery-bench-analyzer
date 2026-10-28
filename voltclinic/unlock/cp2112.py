@@ -491,7 +491,8 @@ class Cp2112Smbus(SMbusBus):
                 return
             if status == TSTATUS_BUSY:
                 continue
-            raise SMbusError(f"SMBus transfer failed (status 0x{status:02X})")
+            raise SMbusError(f"SMBus transfer failed (status 0x{status:02X})",
+                         status=status)
         raise SMbusError("SMBus transfer timed out")
 
     def _read_data(self, length: int) -> bytes:

@@ -164,12 +164,15 @@ class AnalyzePage(QWidget):
             QMessageBox.information(self, "Scan", "Connect an adapter first.")
             return
         found = self.bench.session.scan()
-        if found is None:
-            self.banner.setText("Scan: no gauge answered on any known address.")
-        else:
+        if found is not None:
             self.addr_edit.setText(f"0x{found:02X}")
             self.banner.setText(f"Scan: gauge answered at 0x{found:02X}.")
             self._fill_identity()
+            return
+        from ...core.sbs import describe_scan, scan_for_gauge_detailed
+        self.banner.setText(
+            "Scan: no gauge answered on any known address.\n"
+            + describe_scan(scan_for_gauge_detailed(self.bench.session.bus)))
 
     def _set_connected(self, on: bool) -> None:
         self.connect_btn.setEnabled(not on)

@@ -51,7 +51,14 @@ SB_MANUFACTURER_DATA = 0x23
 
 
 class SMbusError(Exception):
-    pass
+    """SMBus/bench transport failure.
+
+    ``status`` optionally carries the adapter-level transfer error code so
+    diagnosis code can distinguish NAK (silent slave) from bus errors.
+    """
+    def __init__(self, message: str = "", status: Optional[int] = None):
+        super().__init__(message)
+        self.status = status
 
 
 class SMbusBus(abc.ABC):
