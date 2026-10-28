@@ -159,9 +159,17 @@ def cmd_smbus(args) -> int:
             print(f"CP2112 adapter unavailable: {e}")
             return 1
         print("[CP2112 USB-SMBus adapter]")
+    elif args.adapter == "nlba":
+        from ..unlock.nlba import NLBASmbus
+        try:
+            bus = NLBASmbus()
+        except Exception as e:  # e.g. no adapter present
+            print(f"NLBA adapter unavailable: {e}")
+            return 1
+        print("[NLBA USB-SMBus adapter]")
     else:
-        print("Use --demo for the fake gauge, or --adapter cp2112 for a "
-              "real CP2112 USB-SMBus adapter (Windows HID).")
+        print("Use --demo for the fake gauge, or --adapter cp2112/nlba for a "
+              "real USB-SMBus adapter.")
         return 1
 
     addr = int(args.addr, 16)
@@ -214,7 +222,7 @@ def main(argv=None) -> int:
     adapter = p_analyze.add_mutually_exclusive_group()
     adapter.add_argument("--internal", action="store_true",
                          help="read THIS machine's battery instead of the bench")
-    p_analyze.add_argument("--adapter", choices=["demo", "cp2112"], default="demo")
+    p_analyze.add_argument("--adapter", choices=["demo", "cp2112", "nlba"], default="demo")
     p_analyze.add_argument("--addr", type=lambda s: int(s, 16), default=0x0B,
                            help="gauge address, default 0x0B")
     p_analyze.add_argument("--watch", type=int, default=0, metavar="SECONDS",
@@ -222,7 +230,7 @@ def main(argv=None) -> int:
     p_analyze.set_defaults(func=cmd_analyze)
 
     p_cal = sub.add_parser("calibrate", help="guided learn cycle on the bench battery")
-    p_cal.add_argument("--adapter", choices=["demo", "cp2112"], default="demo")
+    p_cal.add_argument("--adapter", choices=["demo", "cp2112", "nlba"], default="demo")
     p_cal.add_argument("--addr", type=lambda s: int(s, 16), default=0x0B)
     p_cal.add_argument("--low", type=float, default=10.0, help="discharge floor %%RSOC")
     p_cal.set_defaults(func=cmd_calibrate)
@@ -235,8 +243,8 @@ def main(argv=None) -> int:
     p_smbus = sub.add_parser("smbus", help="probe a Smart Battery gauge")
     grp = p_smbus.add_mutually_exclusive_group()
     grp.add_argument("--demo", action="store_true", help="use the fake in-memory bus")
-    grp.add_argument("--adapter", choices=["cp2112"], default="cp2112",
-                     help="real SMBus adapter driver (Windows HID)")
+    grp.add_argument("--adapter", choices=["cp2112", "nlba"], default="cp2112",
+                     help="real SMBus adapter driver")
     p_smbus.add_argument("--addr", default="0x0B", help="gauge address, default 0x0B")
     p_smbus.add_argument("--scan", action="store_true",
                          help="scan common addresses instead of using --addr")
