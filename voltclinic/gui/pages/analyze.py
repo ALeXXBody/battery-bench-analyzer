@@ -129,7 +129,7 @@ class AnalyzePage(QWidget):
             return 0x0B
 
     def _connect(self) -> None:
-        from ..core.diaglog import log as diag
+        from ...core.diaglog import log as diag
         adapter = self._selected_adapter()
         addr = self._selected_addr()
         diag(f"gui connect: adapter={adapter} addr=0x{addr:02X}")
