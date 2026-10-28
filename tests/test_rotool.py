@@ -1,8 +1,9 @@
 """Tests for the ROTOOL serial transport (pure parts, no hardware)."""
+from unittest import mock
+
 import pytest
 
 from voltclinic.unlock.rotool import (
-    DEFAULT_PORT_NAME,
     frame_escape,
     frame_unescape,
     frame_wrap,
@@ -59,12 +60,16 @@ def test_frame_crc_matches_xor():
 def test_choose_port_prefers_explicit():
     assert choose_port("COM7") == "COM7"
 
+def test_choose_port_raises_without_device():
+    # No explicit name, no detected device: must raise, never guess a port.
+    with mock.patch("voltclinic.unlock.rotool.list_rotool_ports", return_value=[]):
+        with pytest.raises(SMbusError):
+            choose_port(None)
 
-def test_choose_port_default_without_detection():
-    # no explicit name; detection result is environment-dependent but must
-    # never raise, and fall back to the documented default when empty.
-    if not list_rotool_ports():
-        assert choose_port(None) == DEFAULT_PORT_NAME
+def test_choose_port_uses_detected_device():
+    with mock.patch("voltclinic.unlock.rotool.list_rotool_ports",
+                    return_value=["/dev/ttyUSB0"]):
+        assert choose_port(None) == "/dev/ttyUSB0"
 
 
 def test_rotool_smbus_gated_without_protocol():

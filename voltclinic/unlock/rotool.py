@@ -33,7 +33,6 @@ ROTOOL_BRIDGE_VID = 0x067B
 ROTOOL_BRIDGE_PID = 0x2303
 
 DEFAULT_BAUD = 115200
-DEFAULT_PORT_NAME = "COM3"
 
 
 # ---------------------------------------------------------------------------
@@ -61,13 +60,19 @@ def list_rotool_ports() -> List[str]:
 
 
 def choose_port(preferred: Optional[str] = None) -> str:
-    """Pick the port to use: explicit > detected > sensible default."""
+    """Pick the port to use: explicit name, else auto-detected device.
+
+    Raises when no device is found — never guesses a port name.
+    """
     if preferred:
         return preferred
     detected = list_rotool_ports()
     if detected:
         return detected[0]
-    return DEFAULT_PORT_NAME
+    raise SMbusError(
+        "no ROTOOL device found (looking for a Prolific-class USB serial "
+        f"bridge, VID {ROTOOL_BRIDGE_VID:04X}:{ROTOOL_BRIDGE_PID:04X}) — "
+        "connect the device, or pass a port name explicitly.")
 
 
 def frame_escape(data: bytes) -> bytes:
