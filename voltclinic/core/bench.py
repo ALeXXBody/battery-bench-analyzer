@@ -254,6 +254,23 @@ def scan_for_gauge(bus: SMbusBus,
     return _scan(bus, addresses)
 
 
+def open_bus(adapter: str) -> SMbusBus:
+    """Open only the adapter transport (no gauge probe needed).
+
+    Used by the dead-battery rescue flow, which must toggle the bus
+    clocks BEFORE any gauge answers.
+    """
+    if adapter == "demo":
+        return FakeGaugeBus()
+    if adapter == "cp2112":
+        from ..unlock.cp2112 import Cp2112Smbus
+        return Cp2112Smbus()
+    if adapter == "rotool":
+        from ..unlock.rotool import RoToolSmbus
+        return RoToolSmbus()
+    raise SMbusError(f"unknown adapter: {adapter!r}")
+
+
 # ---------------------------------------------------------------------------
 # Guided bench calibration (learn cycle): operator switches power, app watches
 # ---------------------------------------------------------------------------

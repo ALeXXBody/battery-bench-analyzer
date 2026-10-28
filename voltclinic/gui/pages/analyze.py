@@ -69,6 +69,12 @@ class AnalyzePage(QWidget):
         self.disconnect_btn.clicked.connect(self._disconnect)
         self.scan_btn = QPushButton("Scan addresses")
         self.scan_btn.clicked.connect(self._scan)
+        self.rescue_btn = QPushButton("Rescue dead pack")
+        self.rescue_btn.setToolTip(
+            "Toggle the SMBus clocks until a sleeping gauge wakes, then read "
+            "out its permanent-failure and operation-status registers.")
+        self.rescue_btn.clicked.connect(self._rescue)
+        self._rescue_thread = None
         row.addWidget(QLabel("Adapter:"))
         row.addWidget(self.adapter_box)
         row.addWidget(QLabel("Address:"))
@@ -76,6 +82,7 @@ class AnalyzePage(QWidget):
         row.addWidget(self.connect_btn)
         row.addWidget(self.disconnect_btn)
         row.addWidget(self.scan_btn)
+        row.addWidget(self.rescue_btn)
         row.addStretch(1)
         outer.addWidget(conn)
 
@@ -176,10 +183,57 @@ class AnalyzePage(QWidget):
             "Scan: no gauge answered on any known address.\n"
             + describe_scan(scan_for_gauge_detailed(self.bench.session.bus)))
 
+    def _rescue(self) -> None:
+        """Wake + diagnose a silent pack; results land in the banner."""
+        if self._rescue_thread:
+            return
+        adapter = self._selected_adapter()
+        if adapter == "demo":
+            from ...core.bench import FakeGaugeBus
+            bus = FakeGaugeBus()
+        elif adapter == "cp2112":
+            from ...unlock.cp2112 import Cp2112Smbus
+            try:
+                bus = Cp2112Smbus()
+            except SMbusError as exc:
+                self.banner.setText(f"Rescue couldn't open the adapter: {exc}")
+                return
+        else:
+            self.banner.setText("Rescue: choose the CP2112 adapter for now.")
+            return
+        QMessageBox.information(self, "Rescue consent",
+                                "The rescue loop toggles the SMBus clocks for "
+                                "~15 seconds, then reads the gauge's status "
+                                "registers (writes to ManufacturerAccess "
+                                "interpreted as diagnostic reads). "
+                                "Confirm the pack is safe to power on the "
+                                "bench with nothing attached before clicking.")
+        from ...core.rescue import rescue as run_rescue
+        self.banner.setText(
+            "Rescuing: toggling the SMBus clocks — keep the pack powered…")
+        QApplication.processEvents()
+        try:
+            out = run_rescue(bus, consent=self.objectName() + "-rescue-consent",
+                             wake_seconds=15.0)
+        except Exception as exc:  # noqa: BLE001
+            self.banner.setText(f"Rescue failed: {exc}")
+            return
+        if not out.get("addr"):
+            self.banner.setText(
+                "Rescue: the gauge did not wake.\n" + out.get("no_gauge_hint", ""))
+            return
+        report = "; ".join(
+            f"{lbl}={out.get(lbl + '_rendered', 'unavailable')}"
+            for lbl in ("PFStatus", "OperationStatus", "SafetyStatus", "PFAlert"))
+        warning = f"\nWARNING: {out['warning']}" if out.get("warning") else ""
+        self.banner.setText(
+            f"Rescue: gauge woke at 0x{out['addr']:02X}.\n{report}{warning}")
+
     def _set_connected(self, on: bool) -> None:
         self.connect_btn.setEnabled(not on)
         self.disconnect_btn.setEnabled(on)
         self.scan_btn.setEnabled(on)
+        self.rescue_btn.setEnabled(True)   # rescue works without a session
         self.adapter_box.setEnabled(not on)
         self.addr_edit.setEnabled(not on)
         if on:
