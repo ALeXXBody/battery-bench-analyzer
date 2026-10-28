@@ -72,6 +72,24 @@ def test_choose_port_uses_detected_device():
         assert choose_port(None) == "/dev/ttyUSB0"
 
 
+def test_cp2112_configure_builds_valid_config_report():
+    """_configure must only use kwargs that report_smbus_config supports."""
+    from voltclinic.unlock import cp2112 as cp2112_mod
+
+    class _StubDev:
+        def __init__(self):
+            self.stored = []
+
+        def set_feature(self, rpt):
+            self.stored.append(rpt)
+
+    obj = cp2112_mod.Cp2112Smbus.__new__(cp2112_mod.Cp2112Smbus)
+    obj._dev = _StubDev()
+    obj._clock = 100000
+    obj._configure()
+    assert obj._dev.stored and len(obj._dev.stored[0]) == 12
+
+
 def test_rotool_smbus_gated_without_protocol():
     from voltclinic.unlock.rotool import RoToolSmbus
     with pytest.raises(SMbusError):

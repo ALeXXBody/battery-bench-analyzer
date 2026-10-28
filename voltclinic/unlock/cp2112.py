@@ -442,7 +442,7 @@ class Cp2112Smbus(SMbusBus):
 
     def _configure(self) -> None:
         cfg = report_smbus_config(clock_hz=self._clock, auto_send_read=1,
-                                  read_timeout_ms=1000, retry_time=1)
+                                  read_timeout_ms=1000)
         self._dev.set_feature(cfg)
 
     def close(self) -> None:
