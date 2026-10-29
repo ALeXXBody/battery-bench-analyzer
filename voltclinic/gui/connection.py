@@ -76,20 +76,38 @@ class ConnectionBar(QWidget):
         self.status.setObjectName("connStatus")
         row.addWidget(self.status)
 
-        guide = QLabel(
-            "Bench wiring: the pack's gauge D→SDA, C→SCL, one \"-\"→GND; "
-            "SBS gauges usually answer at address 0x0B (Scan finds it).")
-        guide.setObjectName("connGuide")
-        guide.setWordWrap(True)
-        row2 = QHBoxLayout()
-        row2.setContentsMargins(0, 0, 0, 4)
-        row2.addWidget(guide, 1)
+        # full-width detail line for long connect/scan failure text
+        self.detail = QLabel("")
+        self.detail.setObjectName("connDetail")
+        self.detail.setWordWrap(True)
+        self.detail.hide()
 
         bar = QVBoxLayout(self)
         bar.setContentsMargins(16, 8, 16, 4)
         bar.setSpacing(2)
         bar.addLayout(row)
-        bar.addLayout(row2)
+        bar.addWidget(self.detail)
+
+    def _show_detail(self, text: str) -> None:
+        self.detail.setText(text)
+        self.detail.setVisible(bool(text))
+
+    def _hide_detail(self) -> None:
+        self._show_detail("")
+
+    @staticmethod
+    def help_text() -> str:
+        """The bench wiring guidance quoted verbatim for the Help page."""
+        return (
+            "Bench wiring: the pack's gauge sees the adapter as its host, "
+            "so connect D (data) → SDA, C (clock) → SCL, and one \"-\" pad "
+            "→ GND. The two \"+\" pads are usually battery input and "
+            "switched output; with a dead/shutdown pack \"+\" can read "
+            "0 V even when the cells are charged (the output FET is open) "
+            "— that is a protection state, not a wiring fault.\n\n"
+            "Thin wire and good clips are fine. Never bridge \"D\" or "
+            "\"C\" to any voltage source, and never power the pack while "
+            "its SMBus is connected to a live charger-side line.")
 
     # -- public API used by pages (e.g. rescue) -------------------------
 
@@ -118,6 +136,8 @@ class ConnectionBar(QWidget):
         self.adapter_box.setEnabled(not on)
         self.addr_edit.setEnabled(not on)
         self.demo_btn.setEnabled(not on)
+        if on:
+            self._hide_detail()
         self.state_changed.emit(on)
 
     # -- actions ---------------------------------------------------------
@@ -144,12 +164,13 @@ class ConnectionBar(QWidget):
             session = GaugeSession.open(adapter, addr)
         except SMbusError as exc:
             diag(f"connect failed: {exc}")
-            self.status.setText(f"Connect failed: {exc}"[:80] + "…"
-                                if len(str(exc)) > 80 else f"Connect failed: {exc}")
+            self.status.setText("Connection failed")
+            self._show_detail(str(exc))
             return
         except Exception as exc:  # noqa: BLE001
             diag(f"connect failed (unexpected): {type(exc).__name__}: {exc}")
-            self.status.setText(f"Connect failed: {exc}")
+            self.status.setText("Connection failed")
+            self._show_detail(str(exc))
             return
         self.bench.session = session
         self._set_connected(True)
@@ -164,6 +185,7 @@ class ConnectionBar(QWidget):
             self.bench.session.close()
             self.bench.session = None
         self._set_connected(False)
+        self._hide_detail()
         self.status.setText("Not connected")
 
     def _scan(self) -> None:
@@ -174,10 +196,9 @@ class ConnectionBar(QWidget):
         found = session.scan()
         if found is not None:
             self.addr_edit.setText(f"0x{found:02X}")
-            self.status.setText(f"Scan: gauge answered at 0x{found:02X} "
-                                "(reconnect to use it)")
+            self._hide_detail()
+            self.status.setText(f"Scan: gauge answered at 0x{found:02X}")
             return
         from ..core.sbs import describe_scan, scan_for_gauge_detailed
-        self.status.setText(
-            "Scan: no gauge answered.\n"
-            + describe_scan(scan_for_gauge_detailed(session.bus)))
+        self.status.setText("Scan: no gauge answered")
+        self._show_detail(describe_scan(scan_for_gauge_detailed(session.bus)))
