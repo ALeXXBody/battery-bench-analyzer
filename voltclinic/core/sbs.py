@@ -126,6 +126,84 @@ def decode_manufacture_date(raw: int) -> Optional[str]:
         return None
 
 
+# --- full readout / register dump (bench info tabs) ------------------------
+
+WORD_REGS = [
+    (0x01, "RemainingCapacityAlarm", "mAh"),
+    (0x02, "RemainingTimeAlarm", "min"),
+    (0x03, "BatteryMode", ""),
+    (0x04, "AtRate", ""),
+    (0x05, "AtRateTimeToFull", "min"),
+    (0x06, "AtRateTimeToEmpty", "min"),
+    (0x07, "AtRateOK", ""),
+    (0x08, "Temperature", "0.1K"),
+    (0x09, "Voltage", "mV"),
+    (0x0A, "Current", "mA"),
+    (0x0B, "RelativeSOC", "%"),
+    (0x0C, "AbsoluteSOC", "%"),
+    (0x0D, "RemainingCapacity", "mAh*"),
+    (0x0E, "FullChargeCapacity", "mAh*"),
+    (0x0F, "RunTimeToEmpty", "min"),
+    (0x10, "AverageTimeToEmpty", "min"),
+    (0x11, "AverageTimeToFull", "min"),
+    (0x12, "ChargingCurrent", "mA"),
+    (0x13, "ChargingVoltage", "mV"),
+    (0x14, "BatteryStatus", ""),
+    (0x15, "CycleCount", ""),
+    (0x16, "DesignCapacity", "mAh*"),
+    (0x17, "DesignVoltage", "mV"),
+    (0x18, "SpecificationInfo", ""),
+    (0x19, "ManufactureDate", ""),
+    (0x1A, "SerialNumber", ""),
+]
+
+STRING_REGS = [
+    (0x20, "ManufacturerName"),
+    (0x21, "DeviceName"),
+    (0x22, "DeviceChemistry"),
+]
+
+
+def decode_spec_info(raw: int) -> str:
+    """SpecificationInfo(): SBS spec version in the low byte (0x0011 → v1.1)."""
+    major = (raw >> 4) & 0x0F
+    minor = raw & 0x0F
+    if major:
+        return f"SBS spec v{major}.{minor}; raw=0x{raw:04X}"
+    return f"raw=0x{raw:04X}"
+
+
+def decode_serial(raw: int) -> str:
+    return f"0x{raw:04X} ({raw:d})"
+
+
+def decode_manufacture_date_word(raw: int) -> str:
+    if not raw or raw == 0xFFFF:
+        return "—"
+    return decode_manufacture_date(raw) or f"raw=0x{raw:04X}"
+
+
+def fmt_word_value(reg: int, raw: int) -> str:
+    """Render a word register the way an operator expects to see it."""
+    if raw == 0xFFFF:
+        return "unavailable (0xFFFF)"
+    if reg == 0x08:
+        return f"{raw_temp_to_celsius(raw):.1f} °C (raw {raw})"
+    if reg in (0x0A,):                       # signed current
+        return f"{to_signed16(raw):+d} mA"
+    if reg == 0x18:
+        return decode_spec_info(raw)
+    if reg == 0x19:
+        return decode_manufacture_date_word(raw)
+    if reg == 0x1A:
+        return decode_serial(raw)
+    if reg == 0x14:
+        return f"0x{raw:04X} ({', '.join(decode_status(raw)).lower() or 'idle'})"
+    if reg in (0x03, 0x04):                  # mode / AtRate signed
+        return f"0x{raw:04X}" if reg == 0x03 else f"{to_signed16(raw):+d} "
+    return f"{raw:d}"
+
+
 class SBSGauge:
     """Typed reads/writes of the SBS register set over an SMbusBus."""
 
@@ -317,6 +395,36 @@ class SBSGauge:
                 info.discharge_rate_mw = watts * 1000.0
 
         return info
+
+    # --- read-only full dump (info tabs) -------------------------------
+
+    def full_readout(self) -> list:
+        """One pass over every SBS word register -> [(name, raw, unit, text)]."""
+        out = []
+        for reg, name, unit in WORD_REGS:
+            raw = self.read_word_maybe(reg)
+            text = fmt_word_value(reg, raw) if raw is not None else "—"
+            out.append((name, raw, unit, text))
+        return out
+
+    def register_dump(self) -> list:
+        """Full read-only dump: words + string/data blocks.
+
+        Non-destructive: ManufacturerAccess (0x00) is NOT touched here —
+        its access is consent-gated elsewhere.
+        """
+        rows = []
+        for reg, name, unit in WORD_REGS:
+            raw = self.read_word_maybe(reg)
+            text = fmt_word_value(reg, raw) if raw is not None else "—"
+            rows.append((f"0x{reg:02X}", name, "word", unit, text))
+        for reg, name in STRING_REGS:
+            s = self._read_string(reg)
+            rows.append((f"0x{reg:02X}", name, "block", "", s or "—"))
+        raw23 = self.manufacturer_data()
+        rows.append(("0x23", "ManufacturerData", "block", "",
+                     raw23.hex(" ") if raw23 else "—"))
+        return rows
 
     # --- guarded write path (SBS ManufacturerAccess) -------------------
 
