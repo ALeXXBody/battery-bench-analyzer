@@ -8,6 +8,7 @@ consumer of the shared bench session and is organised as tabs:
 - Live data — full telemetry table + CSV export
 - Registers — read-only SBS register dump
 """
+
 from __future__ import annotations
 
 import csv
@@ -16,7 +17,6 @@ import time
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QApplication,
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
@@ -33,7 +33,6 @@ from PySide6.QtWidgets import (
 
 from ...core.analysis import analyse
 from ...core.bench import SessionHolder
-from ...core.sbs import describe_scan, scan_for_gauge_detailed
 from ...unlock.smbus import SMbusError
 from ..widgets import card, stat_card, stat_row
 
@@ -114,7 +113,8 @@ class AnalyzePage(QWidget):
         self.rescue_btn = QPushButton("Rescue dead pack")
         self.rescue_btn.setToolTip(
             "Toggle the SMBus clocks until a sleeping gauge wakes, then "
-            "read out its permanent-failure and operation-status registers.")
+            "read out its permanent-failure and operation-status registers."
+        )
         self.rescue_btn.clicked.connect(self._rescue)
         rescue_row.addWidget(self.rescue_btn)
         rescue_row.addStretch(1)
@@ -137,7 +137,8 @@ class AnalyzePage(QWidget):
         self.cell_read_btn.setToolTip(
             "Selects the gauge's DAStatus bank through ManufacturerAccess "
             "(one diagnostic write, consent-gated) and reads the per-cell "
-            "voltages it publishes on ManufacturerBlockAccess.")
+            "voltages it publishes on ManufacturerBlockAccess."
+        )
         self.cell_read_btn.clicked.connect(self._read_cells)
         row.addWidget(self.cell_read_btn)
         row.addStretch(1)
@@ -205,7 +206,8 @@ class AnalyzePage(QWidget):
         t.verticalHeader().setVisible(False)
         t.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         t.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
+            QHeaderView.ResizeMode.ResizeToContents
+        )
         t.horizontalHeader().setStretchLastSection(True)
         return t
 
@@ -213,16 +215,16 @@ class AnalyzePage(QWidget):
     # lifecycle / state
     # ------------------------------------------------------------------
 
-    def showEvent(self, event) -> None:  # noqa: N802
+    def showEvent(self, event) -> None:
         super().showEvent(event)
         self._timer.start()
 
-    def hideEvent(self, event) -> None:  # noqa: N802
+    def hideEvent(self, event) -> None:
         super().hideEvent(event)
         self._timer.stop()
 
     def _on_state(self, connected: bool) -> None:
-        self._cell_consent = False     # consent is per-connection
+        self._cell_consent = False  # consent is per-connection
         self._last_cells = None
         self.rescue_btn.setEnabled(not self._rescue_busy)
         self.cell_read_btn.setEnabled(True)
@@ -290,17 +292,33 @@ class AnalyzePage(QWidget):
         stat_row("Chemistry", grid, 2, info.chemistry.value)
         stat_row("Serial", grid, 3, str(info.serial_number))
         stat_row("Manufacture date", grid, 4, info.manufacture_date or "—")
-        stat_row("Design voltage", grid, 5,
-                 _fmt(info.design_voltage_mv, "mV"))
-        stat_row("Design capacity", grid, 6,
-                 f"{info.raw.get('design_capacity_mah', '—')} mAh")
-        stat_row("Full charge capacity", grid, 7,
-                 f"{info.raw.get('full_charge_capacity_mah', '—')} mAh")
-        stat_row("Cycle count", grid, 8,
-                 str(info.cycle_count) if info.cycle_count is not None else "—")
-        stat_row("State of health", grid, 9,
-                 f"{info.health_label} ({info.soh_percent:.1f}%)"
-                 if info.soh_percent is not None else "—")
+        stat_row("Design voltage", grid, 5, _fmt(info.design_voltage_mv, "mV"))
+        stat_row(
+            "Design capacity",
+            grid,
+            6,
+            f"{info.raw.get('design_capacity_mah', '—')} mAh",
+        )
+        stat_row(
+            "Full charge capacity",
+            grid,
+            7,
+            f"{info.raw.get('full_charge_capacity_mah', '—')} mAh",
+        )
+        stat_row(
+            "Cycle count",
+            grid,
+            8,
+            str(info.cycle_count) if info.cycle_count is not None else "—",
+        )
+        stat_row(
+            "State of health",
+            grid,
+            9,
+            f"{info.health_label} ({info.soh_percent:.1f}%)"
+            if info.soh_percent is not None
+            else "—",
+        )
 
     # ------------------------------------------------------------------
     # cells / analysis
@@ -315,21 +333,24 @@ class AnalyzePage(QWidget):
             if silent:
                 return
             ans = QMessageBox.question(
-                self, "Cell voltage consent",
+                self,
+                "Cell voltage consent",
                 "Reading the per-cell voltages selects the gauge's DASTatus "
                 "bank through ManufacturerAccess — that is one diagnostic "
                 "WRITE command on the SMBus (public TI interface; it selects "
                 "a read-only data bank, it does not change any setting).\n\n"
                 "Allow diagnostic ManufacturerAccess writes for this "
-                "connection?")
+                "connection?",
+            )
             if ans != QMessageBox.StandardButton.Yes:
                 return
             self._cell_consent = True
         from ...core.rescue import read_cell_voltages
+
         try:
-            cells = read_cell_voltages(session.bus, session.addr,
-                                       consent=self.objectName()
-                                       + "-cells-consent")
+            cells = read_cell_voltages(
+                session.bus, session.addr, consent=self.objectName() + "-cells-consent"
+            )
         except SMbusError as exc:
             self._fill_cells(banner=f"Cell voltage read failed: {exc}")
             return
@@ -357,29 +378,36 @@ class AnalyzePage(QWidget):
         cells = self._last_cells or []
         if not cells:
             self.balance_label.setText(
-                "No cell voltages read yet — press the button above.")
+                "No cell voltages read yet — press the button above."
+            )
             return
         for i, v in enumerate(cells):
             lbl = QLabel(f"Cell {i + 1}")
             lbl.setObjectName("cardTitle")
             val = QLabel(f"{v:.0f} mV")
             val.setObjectName("valueLabel")
-            grid.addWidget(lbl, i // 4, (i % 4) * 2 + 0, )
+            grid.addWidget(
+                lbl,
+                i // 4,
+                (i % 4) * 2 + 0,
+            )
             grid.addWidget(val, i // 4, (i % 4) * 2 + 1)
         if info is None:
             if len(cells) >= 2:
                 self.balance_label.setText(
-                    f"Balance: max-min gap {max(cells) - min(cells):.0f} mV.")
+                    f"Balance: max-min gap {max(cells) - min(cells):.0f} mV."
+                )
             self.verdict.setText(
-                "(identity snapshot unavailable — balance read from cells "
-                "only)")
+                "(identity snapshot unavailable — balance read from cells only)"
+            )
             return
         result = analyse(info, cell_voltages_mv=cells, temperature_c=temp)
         self.balance_label.setText(
             f"Balance: max-min gap {result.imbalance_mv:.0f} mV — "
             f"{result.imbalance_state}."
-            if result.imbalance_mv is not None else
-            "Balance: needs at least two cell readings.")
+            if result.imbalance_mv is not None
+            else "Balance: needs at least two cell readings."
+        )
         self.verdict.setText(result.render())
 
     # ------------------------------------------------------------------
@@ -398,10 +426,14 @@ class AnalyzePage(QWidget):
             return
         self._fill_table(
             self.live_table,
-            [(n, f"0x{raw:04X}" if isinstance(raw, int) else "", text)
-             for n, raw, _u, text in rows])
+            [
+                (n, f"0x{raw:04X}" if isinstance(raw, int) else "", text)
+                for n, raw, _u, text in rows
+            ],
+        )
         self.live_rows.setText(
-            f"{len(rows)} registers · refreshed {time.strftime('%H:%M:%S')}")
+            f"{len(rows)} registers · refreshed {time.strftime('%H:%M:%S')}"
+        )
 
     def _refresh_dump(self) -> None:
         session = self.bench.session
@@ -416,7 +448,8 @@ class AnalyzePage(QWidget):
         self._fill_table(self.dump_table, rows)
         self.hint.setText(
             f"Register dump complete: {len(rows)} entries "
-            "(read-only; ManufacturerAccess 0x00 is never touched here).")
+            "(read-only; ManufacturerAccess 0x00 is never touched here)."
+        )
 
     @staticmethod
     def _fill_table(table: QTableWidget, rows) -> None:
@@ -430,23 +463,28 @@ class AnalyzePage(QWidget):
     def _export_csv(self) -> None:
         live = getattr(self, "live_table", None)
         if live is None or live.rowCount() == 0:
-            self.hint.setText("Nothing to export yet — refresh the live "
-                              "table first.")
+            self.hint.setText("Nothing to export yet — refresh the live table first.")
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export live data CSV", "battery_live.csv", "CSV (*.csv)")
+            self, "Export live data CSV", "battery_live.csv", "CSV (*.csv)"
+        )
         if not path:
             return
         with open(path, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            headers = [live.horizontalHeaderItem(c).text()
-                       for c in range(live.columnCount())]
+            headers = [
+                live.horizontalHeaderItem(c).text() for c in range(live.columnCount())
+            ]
             w.writerow(["time"] + headers)
             stamp = time.strftime("%Y-%m-%d %H:%M:%S")
             for r in range(live.rowCount()):
-                w.writerow([stamp] + [
-                    live.item(r, c).text() if live.item(r, c) else ""
-                    for c in range(live.columnCount())])
+                w.writerow(
+                    [stamp]
+                    + [
+                        live.item(r, c).text() if live.item(r, c) else ""
+                        for c in range(live.columnCount())
+                    ]
+                )
         self.hint.setText(f"Exported: {path}")
 
     # ------------------------------------------------------------------
@@ -457,49 +495,55 @@ class AnalyzePage(QWidget):
         """Start wake + diagnose on a background thread (GUI stays live)."""
         if self._rescue_busy:
             return
-        connected_demo = (self.bench.session is not None
-                          and self.bench.session.adapter_name == "demo")
+        connected_demo = (
+            self.bench.session is not None and self.bench.session.adapter_name == "demo"
+        )
         if connected_demo:
             from ...core.bench import FakeGaugeBus
+
             bus = FakeGaugeBus()
         else:
             adapter = self.conn.selected_adapter()
             if adapter == "cp2112":
                 from ...unlock.cp2112 import Cp2112Smbus
+
                 try:
                     bus = Cp2112Smbus()
                 except SMbusError as exc:
-                    self.banner.setText(
-                        f"Rescue couldn't open the adapter: {exc}")
+                    self.banner.setText(f"Rescue couldn't open the adapter: {exc}")
                     return
             else:
                 self.banner.setText("Rescue: choose the CP2112 adapter for now.")
                 return
         QMessageBox.information(
-            self, "Rescue consent",
+            self,
+            "Rescue consent",
             "The rescue loop toggles the SMBus clocks for ~15 seconds, then "
             "reads the gauge's status registers (writes to "
             "ManufacturerAccess interpreted as diagnostic reads). "
             "Confirm the pack is safe to power on the bench with nothing "
-            "attached before clicking.")
+            "attached before clicking.",
+        )
         from ...core.rescue import rescue as run_rescue
+
         self._rescue_busy = True
         self.rescue_btn.setEnabled(False)
         self.conn.set_busy(True)
         self.banner.setText(
             "Rescuing: toggling the SMBus clocks — keep the pack powered… "
-            "(the window stays responsive; this takes ~15 seconds)")
+            "(the window stays responsive; this takes ~15 seconds)"
+        )
         self._rescue_bridge = _RescueBridge()
         self._rescue_bridge.result.connect(self._on_rescue_result)
         threading.Thread(
-            target=self._rescue_worker, args=(bus, run_rescue),
-            daemon=True).start()
+            target=self._rescue_worker, args=(bus, run_rescue), daemon=True
+        ).start()
 
     def _rescue_worker(self, bus, run_rescue) -> None:
         try:
             out = run_rescue(
-                bus, consent=self.objectName() + "-rescue-consent",
-                wake_seconds=15.0)
+                bus, consent=self.objectName() + "-rescue-consent", wake_seconds=15.0
+            )
         except Exception as exc:  # noqa: BLE001
             out = {"error": f"{type(exc).__name__}: {exc}"}
         self._rescue_bridge.result.emit(out)
@@ -513,12 +557,15 @@ class AnalyzePage(QWidget):
             return
         if not out.get("addr"):
             self.banner.setText(
-                "Rescue: the gauge did not wake.\n" + out.get("no_gauge_hint", ""))
+                "Rescue: the gauge did not wake.\n" + out.get("no_gauge_hint", "")
+            )
             return
         report = "; ".join(
             f"{lbl}={out.get(lbl + '_rendered', 'unavailable')}"
-            for lbl in ("PFStatus", "OperationStatus", "SafetyStatus", "PFAlert"))
+            for lbl in ("PFStatus", "OperationStatus", "SafetyStatus", "PFAlert")
+        )
         warning = f"\nWARNING: {out['warning']}" if out.get("warning") else ""
         self.banner.setText(
             f"Rescue: gauge woke at 0x{out['addr']:02X}.\n{report}{warning}\n"
-            "Press Connect above to open the full session on it.")
+            "Press Connect above to open the full session on it."
+        )

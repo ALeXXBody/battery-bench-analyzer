@@ -4,9 +4,10 @@ Lives at the top of the main window, above the page stack. Owns nothing
 about a page — it only opens/closes the session in the shared
 ``SessionHolder`` and notifies the pages, which are pure read consumers.
 """
+
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -24,7 +25,7 @@ from ..unlock.smbus import SMbusError
 class ConnectionBar(QWidget):
     """Adapter / address / connect-disconnect-scan / status, always visible."""
 
-    state_changed = Signal(bool)   # True = a session is now open
+    state_changed = Signal(bool)  # True = a session is now open
 
     def __init__(self, bench):
         super().__init__()
@@ -67,7 +68,8 @@ class ConnectionBar(QWidget):
         self.demo_btn.setToolTip(
             "Start the built-in simulated battery so every feature can be "
             "explored without hardware. Only available when no adapter "
-            "is connected.")
+            "is connected."
+        )
         self.demo_btn.clicked.connect(self._demo)
         row.addWidget(self.demo_btn)
 
@@ -100,14 +102,15 @@ class ConnectionBar(QWidget):
         """The bench wiring guidance quoted verbatim for the Help page."""
         return (
             "Bench wiring: the pack's gauge sees the adapter as its host, "
-            "so connect D (data) → SDA, C (clock) → SCL, and one \"-\" pad "
-            "→ GND. The two \"+\" pads are usually battery input and "
-            "switched output; with a dead/shutdown pack \"+\" can read "
+            'so connect D (data) → SDA, C (clock) → SCL, and one "-" pad '
+            '→ GND. The two "+" pads are usually battery input and '
+            'switched output; with a dead/shutdown pack "+" can read '
             "0 V even when the cells are charged (the output FET is open) "
             "— that is a protection state, not a wiring fault.\n\n"
-            "Thin wire and good clips are fine. Never bridge \"D\" or "
-            "\"C\" to any voltage source, and never power the pack while "
-            "its SMBus is connected to a live charger-side line.")
+            'Thin wire and good clips are fine. Never bridge "D" or '
+            '"C" to any voltage source, and never power the pack while '
+            "its SMBus is connected to a live charger-side line."
+        )
 
     # -- public API used by pages (e.g. rescue) -------------------------
 
@@ -122,8 +125,14 @@ class ConnectionBar(QWidget):
             return 0x0B
 
     def set_busy(self, busy: bool) -> None:
-        for w in (self.adapter_box, self.addr_edit, self.connect_btn,
-                  self.disconnect_btn, self.scan_btn, self.demo_btn):
+        for w in (
+            self.adapter_box,
+            self.addr_edit,
+            self.connect_btn,
+            self.disconnect_btn,
+            self.scan_btn,
+            self.demo_btn,
+        ):
             w.setEnabled(not busy)
         if busy:
             self.disconnect_btn.setEnabled(True)  # allow escape mid-operation
@@ -145,6 +154,7 @@ class ConnectionBar(QWidget):
     def _demo(self) -> None:
         """Open the simulated battery (button is disabled while connected)."""
         from ..core.diaglog import log as diag
+
         try:
             session = GaugeSession.open("demo")
         except Exception as exc:  # noqa: BLE001
@@ -157,6 +167,7 @@ class ConnectionBar(QWidget):
 
     def _connect(self) -> None:
         from ..core.diaglog import log as diag
+
         adapter = self.selected_adapter()
         addr = self.selected_addr()
         diag(f"connect bar: adapter={adapter} addr=0x{addr:02X}")
@@ -178,7 +189,8 @@ class ConnectionBar(QWidget):
             self.status.setText("Connected to the DEMO gauge")
         else:
             self.status.setText(
-                f"Connected: {session.adapter_name} @ 0x{session.addr:02X}")
+                f"Connected: {session.adapter_name} @ 0x{session.addr:02X}"
+            )
 
     def _disconnect(self) -> None:
         if self.bench.session:
@@ -200,5 +212,6 @@ class ConnectionBar(QWidget):
             self.status.setText(f"Scan: gauge answered at 0x{found:02X}")
             return
         from ..core.sbs import describe_scan, scan_for_gauge_detailed
+
         self.status.setText("Scan: no gauge answered")
         self._show_detail(describe_scan(scan_for_gauge_detailed(session.bus)))

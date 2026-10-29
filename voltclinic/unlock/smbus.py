@@ -17,14 +17,12 @@ is counterfeiting in most jurisdictions. We therefore:
 
 This keeps the tool general and legal to distribute.
 """
+
 from __future__ import annotations
 
 import abc
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Callable, Dict, List, Optional
-
-from ..core.models import BatteryInfo
+from datetime import datetime, timezone
 
 # Smart Battery Data (SBS) v1.1 register addresses - public spec.
 # NOTE: these MUST match voltclinic.core.sbs (kept in sync by tests).
@@ -56,7 +54,8 @@ class SMbusError(Exception):
     ``status`` optionally carries the adapter-level transfer error code so
     diagnosis code can distinguish NAK (silent slave) from bus errors.
     """
-    def __init__(self, message: str = "", status: Optional[int] = None):
+
+    def __init__(self, message: str = "", status: int | None = None):
         super().__init__(message)
         self.status = status
 
@@ -66,20 +65,19 @@ class SMbusBus(abc.ABC):
     gauge on the SMBus and requires an adapter (e.g. FTDI/CH341 USB-SMBus)."""
 
     @abc.abstractmethod
-    def read_word(self, addr: int, reg: int) -> int:
-        ...
+    def read_word(self, addr: int, reg: int) -> int: ...
 
     @abc.abstractmethod
-    def write_word(self, addr: int, reg: int, value: int) -> None:
-        ...
+    def write_word(self, addr: int, reg: int, value: int) -> None: ...
 
     @abc.abstractmethod
-    def read_block(self, addr: int, reg: int, length: int) -> bytes:
-        ...
+    def read_block(self, addr: int, reg: int, length: int) -> bytes: ...
 
 
-_ENABLE_WRITES = ("You must read and acknowledge the safety & legal statement "
-                  "before enabling EEPROM writes.")
+_ENABLE_WRITES = (
+    "You must read and acknowledge the safety & legal statement "
+    "before enabling EEPROM writes."
+)
 
 
 class ConsentRequired(SMbusError):
@@ -89,17 +87,17 @@ class ConsentRequired(SMbusError):
 @dataclass
 class GaugeProbeResult:
     address: int
-    manufacturer: Optional[str] = None
-    device_name: Optional[str] = None
-    chemistry: Optional[str] = None
-    serial: Optional[int] = None
-    design_capacity_mah: Optional[int] = None
-    full_capacity_mah: Optional[int] = None
-    cycle_count: Optional[int] = None
-    relative_soc: Optional[int] = None
-    voltage_mv: Optional[int] = None
-    temperature: Optional[float] = None
-    registers: Dict[str, int] = field(default_factory=dict)
+    manufacturer: str | None = None
+    device_name: str | None = None
+    chemistry: str | None = None
+    serial: int | None = None
+    design_capacity_mah: int | None = None
+    full_capacity_mah: int | None = None
+    cycle_count: int | None = None
+    relative_soc: int | None = None
+    voltage_mv: int | None = None
+    temperature: float | None = None
+    registers: dict[str, int] = field(default_factory=dict)
 
 
 class FuelGaugeInterop:
@@ -114,21 +112,23 @@ class FuelGaugeInterop:
     def __init__(self, bus: SMbusBus, addr: int = GAUGE_ADDR_DEFAULT):
         self._bus = bus
         self._addr = addr
-        self._write_consent: Optional[str] = None
+        self._write_consent: str | None = None
 
     def probe(self) -> GaugeProbeResult:
-        bustr = lambda r: self._read_string(r)  # noqa: E731
+        def _bustr(r):
+            return self._read_string(r)
+
         res = GaugeProbeResult(address=self._addr)
         try:
-            res.manufacturer = bustr(SB_MANUFACTURER_NAME)
+            res.manufacturer = _bustr(SB_MANUFACTURER_NAME)
         except SMbusError:
             pass
         try:
-            res.device_name = bustr(SB_DEVICE_NAME)
+            res.device_name = _bustr(SB_DEVICE_NAME)
         except SMbusError:
             pass
         try:
-            res.chemistry = bustr(SB_DEVICE_CHEMISTRY)
+            res.chemistry = _bustr(SB_DEVICE_CHEMISTRY)
         except SMbusError:
             pass
         res.serial = self._read_maybe(SB_SERIAL_NUMBER)
@@ -149,7 +149,7 @@ class FuelGaugeInterop:
     def grant_write_permission(self, acknowledged: bool) -> None:
         if not acknowledged:
             raise ConsentRequired(_ENABLE_WRITES)
-        self._write_consent = datetime.now().isoformat()
+        self._write_consent = datetime.now(timezone.utc).isoformat()
 
     def write_word(self, reg: int, value: int) -> None:
         self._require_consent()
@@ -161,13 +161,13 @@ class FuelGaugeInterop:
 
     # --- helpers ---
 
-    def _read_maybe(self, reg: int) -> Optional[int]:
+    def _read_maybe(self, reg: int) -> int | None:
         try:
             return self._bus.read_word(self._addr, reg)
         except SMbusError:
             return None
 
-    def _temperature_c(self) -> Optional[float]:
+    def _temperature_c(self) -> float | None:
         raw = self._read_maybe(SB_TEMPERATURE)
         if raw is None or raw in (0, 0xFFFF):
             return None
@@ -179,18 +179,23 @@ class FuelGaugeInterop:
         if not raw:
             raise SMbusError("empty block")
         n = raw[0]
-        chars = raw[1:1 + n]
-        return b"".join(bytes([c]) for c in chars).decode("ascii", "replace").strip("\x00").strip()
+        chars = raw[1 : 1 + n]
+        return (
+            b"".join(bytes([c]) for c in chars)
+            .decode("ascii", "replace")
+            .strip("\x00")
+            .strip()
+        )
 
 
 # Dummy bus for development/testing (and to prove the interface works offline).
 class FakeSMbusBus(SMbusBus):
     """A controllable in-memory bus used for tests and the demo path."""
 
-    def __init__(self, regs: Optional[Dict[int, int]] = None):
+    def __init__(self, regs: dict[int, int] | None = None):
         self.regs = dict(regs or {})
-        self.blocks: Dict[int, bytes] = {}
-        self.writes: List[tuple] = []
+        self.blocks: dict[int, bytes] = {}
+        self.writes: list[tuple] = []
 
     def read_word(self, addr: int, reg: int) -> int:
         if addr != FuelGaugeInterop.GAUGE_ADDR_DEFAULT:

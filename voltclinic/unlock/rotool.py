@@ -21,10 +21,8 @@ through the consent-gated ``FuelGaugeInterop`` layer.
 Clean-room: reimplemented from our own hardware observation and public
 documentation only; no proprietary vendor code is reused.
 """
-from __future__ import annotations
 
-import abc
-from typing import List, Optional
+from __future__ import annotations
 
 from .smbus import SMbusBus, SMbusError
 
@@ -39,7 +37,8 @@ DEFAULT_BAUD = 115200
 # Part A - helpers (pure/OS-light, testable)
 # ---------------------------------------------------------------------------
 
-def list_rotool_ports() -> List[str]:
+
+def list_rotool_ports() -> list[str]:
     """Return serial port names that look like a ROTOOL bridge.
 
     Detection is by the USB VID:PID of the bridge chip when available;
@@ -50,7 +49,7 @@ def list_rotool_ports() -> List[str]:
         from serial.tools import list_ports
     except ImportError:  # pragma: no cover - pyserial is a core dependency
         return []
-    found: List[str] = []
+    found: list[str] = []
     for p in list_ports.comports():
         vid = getattr(p, "vid", None)
         pid = getattr(p, "pid", None)
@@ -59,7 +58,7 @@ def list_rotool_ports() -> List[str]:
     return found
 
 
-def choose_port(preferred: Optional[str] = None) -> str:
+def choose_port(preferred: str | None = None) -> str:
     """Pick the port to use: explicit name, else auto-detected device.
 
     Raises when no device is found — never guesses a port name.
@@ -72,7 +71,8 @@ def choose_port(preferred: Optional[str] = None) -> str:
     raise SMbusError(
         "no ROTOOL device found (looking for a Prolific-class USB serial "
         f"bridge, VID {ROTOOL_BRIDGE_VID:04X}:{ROTOOL_BRIDGE_PID:04X}) — "
-        "connect the device, or pass a port name explicitly.")
+        "connect the device, or pass a port name explicitly."
+    )
 
 
 def frame_escape(data: bytes) -> bytes:
@@ -106,7 +106,7 @@ def frame_unescape(data: bytes) -> bytes:
 
 def frame_wrap(payload: bytes) -> bytes:
     """Delimit + escape a payload into a full frame (0x7E ... 0x7E)."""
-    return b"\x7E" + frame_escape(payload) + b"\x7E"
+    return b"\x7e" + frame_escape(payload) + b"\x7e"
 
 
 def frame_wrap_crc(payload: bytes) -> bytes:
@@ -115,17 +115,18 @@ def frame_wrap_crc(payload: bytes) -> bytes:
     for b in payload:
         crc ^= b
     payload = bytes([crc]) + payload
-    return b"\x7E" + frame_escape(payload) + b"\x7E"
+    return b"\x7e" + frame_escape(payload) + b"\x7e"
 
 
 # ---------------------------------------------------------------------------
 # Part B - serial link
 # ---------------------------------------------------------------------------
 
+
 class RoToolLink:
     """Owns the COM-port connection to the ROTOOL device."""
 
-    def __init__(self, port: Optional[str] = None, baud: int = DEFAULT_BAUD):
+    def __init__(self, port: str | None = None, baud: int = DEFAULT_BAUD):
         self.port_name = choose_port(port)
         self.baud = baud
         self._ser = None
@@ -175,6 +176,7 @@ class RoToolLink:
 # Part C - SMbusBus adapter
 # ---------------------------------------------------------------------------
 
+
 class RoToolSmbus(SMbusBus):
     """ROTOOL adapter presented as a bench SMBus backend.
 
@@ -185,14 +187,15 @@ class RoToolSmbus(SMbusBus):
 
     protocol_ready = False
 
-    def __init__(self, link: Optional[RoToolLink] = None):
+    def __init__(self, link: RoToolLink | None = None):
         self.link = link or RoToolLink()
         self.link.open()
         if not self.protocol_ready:
             self.link.close()
             raise SMbusError(
                 "ROTOOL adapter: handshake/framing capture not complete yet; "
-                "adapter disabled until the protocol is verified.")
+                "adapter disabled until the protocol is verified."
+            )
 
     # -- SMbusBus interface (all gated) --
 

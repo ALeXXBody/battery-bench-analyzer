@@ -1,2 +1,3 @@
-from .smbus import FuelGaugeInterop, SMbusBus, ConsentRequired
-__all__ = ["FuelGaugeInterop", "SMbusBus", "ConsentRequired"]
+from .smbus import ConsentRequired, FuelGaugeInterop, SMbusBus
+
+__all__ = ["ConsentRequired", "FuelGaugeInterop", "SMbusBus"]

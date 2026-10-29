@@ -7,31 +7,35 @@ hardware), and implements the guided learn-cycle calibration: the operator
 switches the bench charger/load, the app monitors the gauge and records what
 the gauge learns.
 """
+
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, List, Optional
 
 from ..unlock.smbus import SMbusBus, SMbusError
 from .sbs import (
+    BS_DISCHARGING,
     BS_FULLY_CHARGED,
     BS_FULLY_DISCHARGED,
-    BS_DISCHARGING,
     DEFAULT_GAUGE_ADDR,
-    SBSGauge,
     SCAN_ADDRESSES,
+    SBSGauge,
     decode_status,
 )
 
-PowerControl = Callable[[str], None]  # "charge_on" | "charge_off" | "load_on" | "load_off" | "all_off"
-ProgressCb = Callable[[str, Optional[float]], None]  # frac None = status-only
+PowerControl = Callable[
+    [str], None
+]  # "charge_on" | "charge_off" | "load_on" | "load_off" | "all_off"
+ProgressCb = Callable[[str, float | None], None]  # frac None = status-only
 
 
 # ---------------------------------------------------------------------------
 # Demo gauge: an in-memory SBS responder for development / no-hardware demos
 # ---------------------------------------------------------------------------
+
 
 def _prefixed(data: bytes) -> bytes:
     return bytes([len(data)]) + data
@@ -44,12 +48,17 @@ class FakeGaugeBus(SMbusBus):
     hardware does: "idle" | "charge" | "discharge".
     """
 
-    def __init__(self, addr: int = DEFAULT_GAUGE_ADDR,
-                 design_mah: int = 4200, full_mah: int = 3100,
-                 cycles: int = 402, soc: float = 60.0,
-                 charge_rate_pct_s: float = 6.0,
-                 discharge_rate_pct_s: float = 8.0,
-                 cells_mv=(3980, 3990, 4000)):
+    def __init__(
+        self,
+        addr: int = DEFAULT_GAUGE_ADDR,
+        design_mah: int = 4200,
+        full_mah: int = 3100,
+        cycles: int = 402,
+        soc: float = 60.0,
+        charge_rate_pct_s: float = 6.0,
+        discharge_rate_pct_s: float = 8.0,
+        cells_mv=(3980, 3990, 4000),
+    ):
         self.addr = addr
         self.design_mah = design_mah
         self.full_mah = full_mah
@@ -59,7 +68,7 @@ class FakeGaugeBus(SMbusBus):
         self.discharge_rate_pct_s = discharge_rate_pct_s
         self.cells_mv = tuple(cells_mv)
         self.mode = "idle"
-        self.writes: List[tuple] = []
+        self.writes: list[tuple] = []
         self._last = time.monotonic()
         self._dastatus = False
         self.blocks = {
@@ -154,12 +163,12 @@ class FakeGaugeBus(SMbusBus):
     def write_word(self, addr: int, reg: int, value: int) -> None:
         self._check(addr)
         self.writes.append((addr, reg, value))
-        if reg == 0x00 and value == 0x0057:   # TI DAStatus1 select
+        if reg == 0x00 and value == 0x0057:  # TI DAStatus1 select
             self._dastatus = True
 
     def read_block(self, addr: int, reg: int, length: int) -> bytes:
         self._check(addr)
-        if reg == 0x44 and self._dastatus:    # ManufacturerBlockAccess reply
+        if reg == 0x44 and self._dastatus:  # ManufacturerBlockAccess reply
             out = bytearray()
             for mv in self.cells_mv:
                 out += bytes([mv & 0xFF, (mv >> 8) & 0xFF])
@@ -183,11 +192,11 @@ class FakeGaugeBus(SMbusBus):
 # Sessions
 # ---------------------------------------------------------------------------
 
+
 class GaugeSession:
     """An open connection to one gauge on one adapter."""
 
-    def __init__(self, bus: SMbusBus, addr: int, adapter_name: str,
-                 owned: bool = True):
+    def __init__(self, bus: SMbusBus, addr: int, adapter_name: str, owned: bool = True):
         self.bus = bus
         self.addr = addr
         self.adapter_name = adapter_name
@@ -195,16 +204,19 @@ class GaugeSession:
         self._owned = owned
 
     @classmethod
-    def open(cls, adapter: str = "demo",
-             addr: int = DEFAULT_GAUGE_ADDR) -> "GaugeSession":
+    def open(
+        cls, adapter: str = "demo", addr: int = DEFAULT_GAUGE_ADDR
+    ) -> GaugeSession:
         """Open a session; raises SMbusError when the gauge does not answer."""
         if adapter == "demo":
             bus = FakeGaugeBus(addr=addr)
         elif adapter == "cp2112":
             from ..unlock.cp2112 import Cp2112Smbus
+
             bus = Cp2112Smbus()
         elif adapter == "rotool":
             from ..unlock.rotool import RoToolSmbus
+
             bus = RoToolSmbus()
         else:
             raise SMbusError(f"unknown adapter: {adapter!r}")
@@ -222,10 +234,11 @@ class GaugeSession:
                 "2) scan twice — the clock toggling during a scan wakes a "
                 "sleeping SBS gauge; "
                 "3) if you have no pull-ups on SDA/SCL, add 10k resistors "
-                "or make sure the pack's internal pull-ups have power.")
+                "or make sure the pack's internal pull-ups have power."
+            )
         return cls(bus, addr, adapter)
 
-    def scan(self) -> Optional[int]:
+    def scan(self) -> int | None:
         """Re-scan this bus for a gauge; updates and returns the address."""
         found = scan_for_gauge(self.bus)
         if found is not None:
@@ -238,6 +251,7 @@ class GaugeSession:
 
     def probe(self):
         from ..unlock.smbus import FuelGaugeInterop
+
         return FuelGaugeInterop(self.bus, self.addr).probe()
 
     def close(self) -> None:
@@ -251,16 +265,16 @@ class SessionHolder:
     """Plain shared state: the one gauge session used across pages/CLI."""
 
     def __init__(self):
-        self.session: Optional[GaugeSession] = None
+        self.session: GaugeSession | None = None
 
     @property
     def connected(self) -> bool:
         return self.session is not None
 
 
-def scan_for_gauge(bus: SMbusBus,
-                   addresses=SCAN_ADDRESSES) -> Optional[int]:
+def scan_for_gauge(bus: SMbusBus, addresses=SCAN_ADDRESSES) -> int | None:
     from .sbs import scan_for_gauge as _scan
+
     return _scan(bus, addresses)
 
 
@@ -274,9 +288,11 @@ def open_bus(adapter: str) -> SMbusBus:
         return FakeGaugeBus()
     if adapter == "cp2112":
         from ..unlock.cp2112 import Cp2112Smbus
+
         return Cp2112Smbus()
     if adapter == "rotool":
         from ..unlock.rotool import RoToolSmbus
+
         return RoToolSmbus()
     raise SMbusError(f"unknown adapter: {adapter!r}")
 
@@ -285,20 +301,21 @@ def open_bus(adapter: str) -> SMbusBus:
 # Guided bench calibration (learn cycle): operator switches power, app watches
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class BenchCalibrationResult:
     started_at: datetime = field(default_factory=datetime.now)
-    finished_at: Optional[datetime] = None
-    fcc_before: Optional[int] = None      # FullChargeCapacity, native units
-    fcc_after: Optional[int] = None
-    soh_before: Optional[float] = None
-    soh_after: Optional[float] = None
+    finished_at: datetime | None = None
+    fcc_before: int | None = None  # FullChargeCapacity, native units
+    fcc_after: int | None = None
+    soh_before: float | None = None
+    soh_after: float | None = None
     cycles_completed: int = 0
     cancelled: bool = False
-    events: List[str] = field(default_factory=list)
+    events: list[str] = field(default_factory=list)
 
     @property
-    def fcc_delta(self) -> Optional[int]:
+    def fcc_delta(self) -> int | None:
         if self.fcc_before is None or self.fcc_after is None:
             return None
         return self.fcc_after - self.fcc_before
@@ -319,10 +336,13 @@ class BenchCalibration:
     limits; the app only reads.
     """
 
-    def __init__(self, gauge: SBSGauge,
-                 power_control: Optional[PowerControl] = None,
-                 low_rsoc: float = 10.0,
-                 poll_s: float = 2.0):
+    def __init__(
+        self,
+        gauge: SBSGauge,
+        power_control: PowerControl | None = None,
+        low_rsoc: float = 10.0,
+        poll_s: float = 2.0,
+    ):
         self.gauge = gauge
         self.power_control = power_control
         self.low_rsoc = low_rsoc
@@ -332,8 +352,9 @@ class BenchCalibration:
     def cancel(self) -> None:
         self._cancelled = True
 
-    def _power(self, command: str, log: List[str], progress: ProgressCb,
-               instruction: str) -> None:
+    def _power(
+        self, command: str, log: list[str], progress: ProgressCb, instruction: str
+    ) -> None:
         if self.power_control is not None:
             self.power_control(command)
             log.append(f"[power] {command}")
@@ -346,9 +367,14 @@ class BenchCalibration:
         status = self.gauge.battery_status() or 0
         return rsoc, status
 
-    def _wait(self, progress: ProgressCb, log: List[str],
-              phase: str, done: Callable[[float, int], bool],
-              frac: Callable[[float], float]) -> None:
+    def _wait(
+        self,
+        progress: ProgressCb,
+        log: list[str],
+        phase: str,
+        done: Callable[[float, int], bool],
+        frac: Callable[[float], float],
+    ) -> None:
         while True:
             if self._cancelled:
                 raise _Cancelled()
@@ -361,7 +387,7 @@ class BenchCalibration:
                 return
             time.sleep(self.poll_s)
 
-    def run(self, progress: Optional[ProgressCb] = None) -> BenchCalibrationResult:
+    def run(self, progress: ProgressCb | None = None) -> BenchCalibrationResult:
         result = BenchCalibrationResult()
         log = result.events
 
@@ -373,33 +399,61 @@ class BenchCalibration:
         result.fcc_before = self.gauge.full_charge_capacity()
         if design and result.fcc_before:
             result.soh_before = result.fcc_before / design * 100.0
-        log.append(f"learn cycle start: FCC={result.fcc_before} "
-                   f"(design={design}), low threshold={self.low_rsoc:.0f}%")
+        log.append(
+            f"learn cycle start: FCC={result.fcc_before} "
+            f"(design={design}), low threshold={self.low_rsoc:.0f}%"
+        )
 
         try:
             log.append("phase 1/3: charge")
-            self._power("charge_on", log, cb,
-                        "Connect the bench charger and let the pack charge to full.")
-            self._wait(cb, log, "Charge",
-                       lambda rsoc, st: bool(st & BS_FULLY_CHARGED) or rsoc >= 99.5,
-                       lambda rsoc: 0.33 * rsoc / 100.0)
-            self._power("charge_off", log, cb, "Charge complete: switch the charger off.")
+            self._power(
+                "charge_on",
+                log,
+                cb,
+                "Connect the bench charger and let the pack charge to full.",
+            )
+            self._wait(
+                cb,
+                log,
+                "Charge",
+                lambda rsoc, st: bool(st & BS_FULLY_CHARGED) or rsoc >= 99.5,
+                lambda rsoc: 0.33 * rsoc / 100.0,
+            )
+            self._power(
+                "charge_off", log, cb, "Charge complete: switch the charger off."
+            )
 
             log.append("phase 2/3: discharge")
-            self._power("load_on", log, cb,
-                        "Connect the bench load and discharge the pack.")
-            self._wait(cb, log, "Discharge",
-                       lambda rsoc, st: rsoc <= self.low_rsoc or bool(st & BS_FULLY_DISCHARGED),
-                       lambda rsoc: 0.33 + 0.33 * (100.0 - rsoc) / max(1.0, 100.0 - self.low_rsoc))
+            self._power(
+                "load_on", log, cb, "Connect the bench load and discharge the pack."
+            )
+            self._wait(
+                cb,
+                log,
+                "Discharge",
+                lambda rsoc, st: (
+                    rsoc <= self.low_rsoc or bool(st & BS_FULLY_DISCHARGED)
+                ),
+                lambda rsoc: (
+                    0.33 + 0.33 * (100.0 - rsoc) / max(1.0, 100.0 - self.low_rsoc)
+                ),
+            )
             self._power("load_off", log, cb, "Discharge complete: switch the load off.")
 
             log.append("phase 3/3: recharge")
-            self._power("charge_on", log, cb,
-                        "Reconnect the charger and recharge to full.")
-            self._wait(cb, log, "Recharge",
-                       lambda rsoc, st: bool(st & BS_FULLY_CHARGED) or rsoc >= 99.5,
-                       lambda rsoc: 0.66 + 0.34 * rsoc / 100.0)
-            self._power("charge_off", log, cb, "Recharge complete: switch the charger off.")
+            self._power(
+                "charge_on", log, cb, "Reconnect the charger and recharge to full."
+            )
+            self._wait(
+                cb,
+                log,
+                "Recharge",
+                lambda rsoc, st: bool(st & BS_FULLY_CHARGED) or rsoc >= 99.5,
+                lambda rsoc: 0.66 + 0.34 * rsoc / 100.0,
+            )
+            self._power(
+                "charge_off", log, cb, "Recharge complete: switch the charger off."
+            )
             result.cycles_completed = 1
             cb("Learn cycle complete.", 1.0)
         except _Cancelled:
@@ -417,8 +471,9 @@ class BenchCalibration:
         result.fcc_after = self.gauge.full_charge_capacity()
         if design and result.fcc_after:
             result.soh_after = result.fcc_after / design * 100.0
-        log.append(f"learn cycle end: FCC={result.fcc_after} "
-                   f"(delta={result.fcc_delta})")
+        log.append(
+            f"learn cycle end: FCC={result.fcc_after} (delta={result.fcc_delta})"
+        )
         result.finished_at = datetime.now()
         return result
 

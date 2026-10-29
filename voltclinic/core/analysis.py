@@ -4,23 +4,23 @@ Read-only arithmetic over already-fetched information. Per-cell voltages
 themselves come from consent-gated TI ManufacturerAccess reads elsewhere
 (bq40z-class DAStatus subcommands); this module only interprets numbers.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 
 @dataclass
 class PackAnalysis:
-    soh_percent: Optional[float] = None
+    soh_percent: float | None = None
     health_class: str = "unknown"
-    capacity_loss_percent: Optional[float] = None
-    cells_style: int = 0                    # series cell count estimate
-    cell_voltages_mv: List[float] = field(default_factory=list)
-    imbalance_mv: Optional[float] = None
+    capacity_loss_percent: float | None = None
+    cells_style: int = 0  # series cell count estimate
+    cell_voltages_mv: list[float] = field(default_factory=list)
+    imbalance_mv: float | None = None
     imbalance_state: str = "unknown"
-    findings: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    findings: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     verdict: str = ""
 
     def render(self) -> str:
@@ -30,7 +30,7 @@ class PackAnalysis:
         return "\n".join(lines)
 
 
-def estimate_cell_count(design_voltage_mv: Optional[float]) -> int:
+def estimate_cell_count(design_voltage_mv: float | None) -> int:
     """Series count from DesignVoltage (Li-ion nominal 3.7 V)."""
     if not design_voltage_mv:
         return 0
@@ -38,7 +38,7 @@ def estimate_cell_count(design_voltage_mv: Optional[float]) -> int:
     return n if 1 <= n <= 14 else 0
 
 
-def _health_classification(soh: Optional[float]) -> str:
+def _health_classification(soh: float | None) -> str:
     if soh is None:
         return "unknown"
     if soh >= 92.0:
@@ -50,7 +50,7 @@ def _health_classification(soh: Optional[float]) -> str:
     return "poor"
 
 
-def classify_imbalance(delta_mv: Optional[float]) -> str:
+def classify_imbalance(delta_mv: float | None) -> str:
     if delta_mv is None:
         return "unknown"
     if delta_mv <= 20:
@@ -62,8 +62,11 @@ def classify_imbalance(delta_mv: Optional[float]) -> str:
     return "severely unbalanced"
 
 
-def analyse(info, cell_voltages_mv: Optional[List[float]] = None,
-            temperature_c: Optional[float] = None) -> PackAnalysis:
+def analyse(
+    info,
+    cell_voltages_mv: list[float] | None = None,
+    temperature_c: float | None = None,
+) -> PackAnalysis:
     """Build the operator-facing analysis from a BatteryInfo snapshot."""
     a = PackAnalysis()
     design = info.raw.get("design_capacity_mah")
@@ -83,45 +86,52 @@ def analyse(info, cell_voltages_mv: Optional[List[float]] = None,
     if a.health_class != "unknown":
         a.findings.append(
             f"capacity retention {a.soh_percent:.1f}% "
-            f"({a.capacity_loss_percent:.1f}% left on the table)")
+            f"({a.capacity_loss_percent:.1f}% left on the table)"
+        )
     if info.cycle_count is not None:
         if info.cycle_count >= 800:
             a.warnings.append(
                 f"{info.cycle_count} cycles recorded — near or past "
-                "consumer pack design life")
+                "consumer pack design life"
+            )
         else:
             a.findings.append(f"{info.cycle_count} charge cycles")
     if a.imbalance_state == "balanced":
-        a.findings.append(
-            f"cells balanced (largest gap {a.imbalance_mv:.0f} mV)")
+        a.findings.append(f"cells balanced (largest gap {a.imbalance_mv:.0f} mV)")
     elif a.imbalance_state != "unknown":
         a.warnings.append(f"cell imbalance: {a.imbalance_state}")
     if cells and a.cells_style and len(cells) != a.cells_style:
         a.warnings.append(
             f"gauge reports {len(cells)} cell voltages but design voltage "
-            f"implies {a.cells_style}S — check the DAStatus mapping")
+            f"implies {a.cells_style}S — check the DAStatus mapping"
+        )
     if cells:
         for i, v in enumerate(cells, start=1):
             if not (2500 <= v <= 4300):
                 a.warnings.append(
-                    f"cell {i} at {v:.0f} mV is outside the healthy Li-ion "
-                    "idle window")
+                    f"cell {i} at {v:.0f} mV is outside the healthy Li-ion idle window"
+                )
     if temperature_c is not None:
         if temperature_c > 45:
             a.warnings.append(
-                f"pack at {temperature_c:.0f} °C — above charge-safe range")
+                f"pack at {temperature_c:.0f} °C — above charge-safe range"
+            )
         elif temperature_c < 0:
             a.warnings.append(
                 f"pack at {temperature_c:.0f} °C — charging below 0 °C "
-                "plates lithium; warm it to room temperature first")
+                "plates lithium; warm it to room temperature first"
+            )
         else:
             a.findings.append(f"temperature {temperature_c:.1f} °C — normal")
 
     if not a.findings:
         a.findings.append("not enough answered registers for a full verdict")
     if a.warnings:
-        a.verdict = ("Analysis: usable with issues" if a.health_class in
-                     ("good", "worn") else "Analysis: issues detected")
+        a.verdict = (
+            "Analysis: usable with issues"
+            if a.health_class in ("good", "worn")
+            else "Analysis: issues detected"
+        )
     elif a.health_class in ("excellent", "good", "worn"):
         a.verdict = f"Analysis: pack looks {a.health_class}"
     else:

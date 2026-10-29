@@ -6,6 +6,7 @@ This allows headless verification (QT_QPA_PLATFORM=offscreen) of packaged
 builds without a display. The quit is driven from a plain Python thread
 because some headless setups (wine/offscreen) do not dispatch Qt timers.
 """
+
 from __future__ import annotations
 
 import os
@@ -17,6 +18,7 @@ from .. import __version__
 
 def _selftest_exit(delay_s: float, pid: int) -> None:
     import time
+
     time.sleep(delay_s)
     try:
         with open("selftest_ok.txt", "w", encoding="ascii") as f:
@@ -32,12 +34,15 @@ def _install_crash_hook() -> None:
 
     def hook(kind, value, tb):
         import traceback
+
         detail = "".join(traceback.format_exception(kind, value, tb))
         log("UNCAUGHT EXCEPTION:", *detail.rstrip().splitlines())
         try:
             from PySide6.QtWidgets import QMessageBox
-            box = QMessageBox(QMessageBox.Critical, "VoltClinic error",
-                              f"{kind.__name__}: {value}")
+
+            box = QMessageBox(
+                QMessageBox.Critical, "VoltClinic error", f"{kind.__name__}: {value}"
+            )
             box.setDetailedText(detail)
             box.exec()
         except Exception:  # noqa: BLE001 - dialog unavailable (headless)
@@ -66,7 +71,10 @@ def main() -> int:
     _install_crash_hook()
 
     from ..core.diaglog import log as diag
-    diag(f"VoltClinic {__version__} started (frozen={bool(getattr(sys, 'frozen', False))})")
+
+    diag(
+        f"VoltClinic {__version__} started (frozen={bool(getattr(sys, 'frozen', False))})"
+    )
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoltClinic")
@@ -86,8 +94,9 @@ def main() -> int:
         # the outcome to selftest_ok.txt and exits (see MainWindow).
         QTimer.singleShot(300, win.update_btn.click)
     elif selftest:
-        threading.Thread(target=_selftest_exit, args=(3.0, os.getpid()),
-                         daemon=True).start()
+        threading.Thread(
+            target=_selftest_exit, args=(3.0, os.getpid()), daemon=True
+        ).start()
     else:
         win.trigger_update_check(silent=True)
 

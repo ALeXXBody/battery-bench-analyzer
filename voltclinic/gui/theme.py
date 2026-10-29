@@ -1,4 +1,5 @@
 """Modern dark theme for the VoltClinic GUI (QSS)."""
+
 from __future__ import annotations
 
 DARK_THEME = """

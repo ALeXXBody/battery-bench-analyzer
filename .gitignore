@@ -22,3 +22,9 @@ Thumbs.db
 reports/
 exports/
 .pytest_cache/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc

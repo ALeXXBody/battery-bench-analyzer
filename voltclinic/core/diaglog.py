@@ -4,19 +4,18 @@ Writes timestamped lines to ``%LOCALAPPDATA%/VoltClinic/diag.log`` on Windows
 (or ``~/.voltclinic/diag.log`` elsewhere). Never raises: logging must not
 break the adapter path it is observing.
 """
+
 from __future__ import annotations
 
 import os
 import time
-from typing import List
 
 
 def _log_path() -> str:
     if os.name == "nt":
         base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
         return os.path.join(base, "VoltClinic", "diag.log")
-    return os.path.join(
-        os.path.expanduser("~"), ".voltclinic", "diag.log")
+    return os.path.join(os.path.expanduser("~"), ".voltclinic", "diag.log")
 
 
 def log(*lines: str) -> None:
@@ -25,13 +24,14 @@ def log(*lines: str) -> None:
         path = _log_path()
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "a", encoding="utf-8") as f:
-            for line in lines:
-                f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {line}\n")
+            f.writelines(
+                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {line}\n" for line in lines
+            )
     except OSError:
         pass
 
 
-def summary(paths: List[tuple]) -> str:
+def summary(paths: list[tuple]) -> str:
     """Render an enumeration result: [(path, vid, pid), ...]."""
     if not paths:
         return "<no HID interfaces enumerated>"

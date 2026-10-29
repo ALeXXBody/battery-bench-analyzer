@@ -4,6 +4,7 @@ The operator switches the bench charger / electronic load; the app watches the
 gauge through the phases and records what it learns. No hardware is driven by
 the app itself.
 """
+
 from __future__ import annotations
 
 import threading
@@ -57,7 +58,8 @@ class RegenPage(QWidget):
             "full. YOU switch the bench charger and load when prompted — the "
             "app monitors the gauge and records the results. The pack's own "
             "firmware remains the safety limit; never leave a pack unattended "
-            "on the bench.")
+            "on the bench."
+        )
         info.setWordWrap(True)
         lay.addWidget(info)
 
@@ -111,12 +113,14 @@ class RegenPage(QWidget):
         session = self.bench.session
         if session is None:
             self.status.setText(
-                "No gauge connected — open one on the Bench Analyzer page.")
+                "No gauge connected — open one on the Bench Analyzer page."
+            )
             return
         demo = session.adapter_name == "demo"
         power = session.bus.power if demo else None
-        self.engine = BenchCalibration(session.gauge, power_control=power,
-                                       low_rsoc=10.0, poll_s=1.0)
+        self.engine = BenchCalibration(
+            session.gauge, power_control=power, low_rsoc=10.0, poll_s=1.0
+        )
         self.start_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
         self.progress.setValue(0)
@@ -127,7 +131,8 @@ class RegenPage(QWidget):
     def _worker(self) -> None:
         try:
             result = self.engine.run(
-                progress=lambda msg, frac: self.bridge.progress.emit(msg, frac))
+                progress=lambda msg, frac: self.bridge.progress.emit(msg, frac)
+            )
         except Exception as exc:  # noqa: BLE001
             self.bridge.done.emit(exc)
             return
@@ -160,5 +165,5 @@ class RegenPage(QWidget):
             self._log_append(ev)
         tail = " (cancelled)" if result.cancelled else ""
         self.status.setText(
-            f"Learn cycle finished. FCC {result.fcc_before} → "
-            f"{result.fcc_after}.{tail}")
+            f"Learn cycle finished. FCC {result.fcc_before} → {result.fcc_after}.{tail}"
+        )

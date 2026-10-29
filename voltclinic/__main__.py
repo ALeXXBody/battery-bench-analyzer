@@ -3,6 +3,7 @@
 Prints are guarded because in a --windowed PyInstaller exe sys.stdout and
 sys.stderr are None.
 """
+
 import sys
 
 
@@ -17,12 +18,14 @@ def _eprint(msg: str) -> None:
 def main() -> int:
     try:
         from .gui.app import main as gui_main
+
         return gui_main()
     except Exception as exc:  # noqa: BLE001
         _eprint(f"[voltclinic] GUI failed to start ({exc}).")
         _eprint("Falling back to CLI. Use `python -m voltclinic.cli` for the CLI.")
         try:
             from .cli.__main__ import main as cli_main
+
             return cli_main(["analyze"])
         except SystemExit as e:
             return int(e.code or 0)

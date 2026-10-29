@@ -1,4 +1,5 @@
 """Small reusable card / widget builders for the GUI."""
+
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
@@ -20,8 +21,13 @@ def card(parent: QWidget | None = None) -> QFrame:
 class StatCard(QFrame):
     """A titled card whose big value can be updated via set_value()."""
 
-    def __init__(self, title: str, value: str = "—", accent: bool = False,
-                 parent: QWidget | None = None):
+    def __init__(
+        self,
+        title: str,
+        value: str = "—",
+        accent: bool = False,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.setProperty("card", True)
         lay = QVBoxLayout(self)
@@ -42,8 +48,7 @@ def stat_card(title: str, value: str = "—", accent: bool = False) -> QFrame:
     return StatCard(title, value, accent=accent)
 
 
-def stat_row(field: str, grid: QGridLayout, row: int,
-             value: str = "—") -> None:
+def stat_row(field: str, grid: QGridLayout, row: int, value: str = "—") -> None:
     lbl = QLabel(field)
     lbl.setObjectName("cardTitle")
     val = QLabel(value)

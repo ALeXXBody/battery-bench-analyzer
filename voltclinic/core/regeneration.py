@@ -22,13 +22,14 @@ down before any cell is over-discharged. This is a recalibration, not a
 "resurrection" - physically failed cells are a fire risk and must not be forced
 back to life in software.
 """
+
 from __future__ import annotations
 
 import abc
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, List, Optional
 
 from ..core.models import BatteryInfo, ChargeState
 
@@ -43,12 +44,10 @@ class PowerPolicyGuard(abc.ABC):
     """Ensures the machine stays awake and doesn't sleep mid-cycle."""
 
     @abc.abstractmethod
-    def enter(self) -> None:
-        ...
+    def enter(self) -> None: ...
 
     @abc.abstractmethod
-    def exit(self) -> None:
-        ...
+    def exit(self) -> None: ...
 
     @property
     def supports_prevent_sleep(self) -> bool:
@@ -72,8 +71,12 @@ class WindowsPowerPolicy(PowerPolicyGuard):
 
     def __init__(self):
         import ctypes
+
         self._ctypes = ctypes
-        self._exstate = getattr(ctypes, "windll", None) and ctypes.windll.kernel32.SetThreadExecutionState
+        self._exstate = (
+            getattr(ctypes, "windll", None)
+            and ctypes.windll.kernel32.SetThreadExecutionState
+        )
         self._active = False
 
     @property
@@ -94,6 +97,7 @@ class WindowsPowerPolicy(PowerPolicyGuard):
 
 def default_power_policy() -> PowerPolicyGuard:
     import platform
+
     if platform.system() == "Windows":
         return WindowsPowerPolicy()
     return NoopPowerPolicy()
@@ -102,17 +106,17 @@ def default_power_policy() -> PowerPolicyGuard:
 @dataclass
 class RegenerationResult:
     started_at: datetime = field(default_factory=datetime.now)
-    finished_at: Optional[datetime] = None
+    finished_at: datetime | None = None
     cycles_completed: int = 0
-    before_soh: Optional[float] = None
-    after_soh: Optional[float] = None
-    before_full_mwh: Optional[float] = None
-    after_full_mwh: Optional[float] = None
+    before_soh: float | None = None
+    after_soh: float | None = None
+    before_full_mwh: float | None = None
+    after_full_mwh: float | None = None
     cancelled: bool = False
-    events: List[str] = field(default_factory=list)
+    events: list[str] = field(default_factory=list)
 
     @property
-    def soh_delta(self) -> Optional[float]:
+    def soh_delta(self) -> float | None:
         if self.before_soh is None or self.after_soh is None:
             return None
         return self.after_soh - self.before_soh
@@ -127,17 +131,19 @@ class RegenerationEngine:
     power_policy: sleep-prevention guard.
     """
 
-    LOW_THRESHOLD_PCT = 15.0   # stop discharge here (Windows still protects below)
+    LOW_THRESHOLD_PCT = 15.0  # stop discharge here (Windows still protects below)
     TARGET_FULL_PCT = 100.0
     POLL_SEC = 10
     MAX_CYCLES = 3
 
-    def __init__(self,
-                 reader,
-                 battery_index: int = 0,
-                 policy: Optional[PowerPolicyGuard] = None,
-                 max_cycles: int = MAX_CYCLES,
-                 low_threshold_pct: float = LOW_THRESHOLD_PCT):
+    def __init__(
+        self,
+        reader,
+        battery_index: int = 0,
+        policy: PowerPolicyGuard | None = None,
+        max_cycles: int = MAX_CYCLES,
+        low_threshold_pct: float = LOW_THRESHOLD_PCT,
+    ):
         self._reader = reader
         self._battery_index = battery_index
         self._policy = policy or default_power_policy()
@@ -148,17 +154,19 @@ class RegenerationEngine:
     def cancel(self) -> None:
         self._cancelled = True
 
-    def _latest(self) -> Optional[BatteryInfo]:
+    def _latest(self) -> BatteryInfo | None:
         reader = self._reader
         try:
-            bats = reader.refresh() if hasattr(reader, "refresh") else reader().refresh()
+            bats = (
+                reader.refresh() if hasattr(reader, "refresh") else reader().refresh()
+            )
         except Exception:  # noqa: BLE001
             return None
         if not bats or self._battery_index >= len(bats):
             return None
         return bats[self._battery_index]
 
-    def run(self, progress: Optional[ProgressCb] = None) -> RegenerationResult:
+    def run(self, progress: ProgressCb | None = None) -> RegenerationResult:
         result = RegenerationResult()
         before = self._latest()
         if before is None:
@@ -171,7 +179,11 @@ class RegenerationEngine:
             for cycle in range(1, self.max_cycles + 1):
                 if self._cancelled:
                     break
-                self._log(progress, f"Cycle {cycle}: discharging to {self.low_threshold_pct:.0f}%", 0.0)
+                self._log(
+                    progress,
+                    f"Cycle {cycle}: discharging to {self.low_threshold_pct:.0f}%",
+                    0.0,
+                )
                 self._discharge_to_low(progress, cycle)
                 if self._cancelled:
                     break
@@ -197,11 +209,20 @@ class RegenerationEngine:
             pct = info.remaining_percent
             if pct is None:
                 raise RuntimeError("Battery charge level unknown; cannot calibrate.")
-            if pct <= self.low_threshold_pct or info.charge_state == ChargeState.CRITICAL:
-                self._log(progress, f"Cycle {cycle}: reached low threshold ({pct:.0f}%)", 0.45)
+            if (
+                pct <= self.low_threshold_pct
+                or info.charge_state == ChargeState.CRITICAL
+            ):
+                self._log(
+                    progress, f"Cycle {cycle}: reached low threshold ({pct:.0f}%)", 0.45
+                )
                 return
             if info.ac_online:
-                self._log(progress, "Plugged into AC during discharge; unplug to proceed.", 0.0)
+                self._log(
+                    progress,
+                    "Plugged into AC during discharge; unplug to proceed.",
+                    0.0,
+                )
             frac = 0.0 + 0.45 * max(0.0, 1.0 - (pct - self.low_threshold_pct) / 100.0)
             self._log(progress, f"Discharging... {pct:.0f}%", min(frac, 0.45))
             time.sleep(self.POLL_SEC)
@@ -224,6 +245,6 @@ class RegenerationEngine:
             time.sleep(self.POLL_SEC)
 
     @staticmethod
-    def _log(progress: Optional[ProgressCb], msg: str, frac: float) -> None:
+    def _log(progress: ProgressCb | None, msg: str, frac: float) -> None:
         if progress:
             progress(msg, max(0.0, min(frac, 1.0)))

@@ -12,12 +12,11 @@ Register conventions (SBS v1.1):
 - current in mA, signed (positive = charging, negative = discharging)
 - strings as SMBus block reads whose first byte is the length
 """
+
 from __future__ import annotations
 
-from typing import List, Optional
-
-from .models import BatteryInfo, ChargeState, normalize_chemistry
 from ..unlock.smbus import SMbusBus, SMbusError
+from .models import BatteryInfo, ChargeState, normalize_chemistry
 
 # --- SBS register map (Smart Battery Data spec v1.1) -----------------------
 SBS_MANUFACTURER_ACCESS = 0x00
@@ -53,7 +52,7 @@ SBS_DEVICE_CHEMISTRY = 0x22
 SBS_MANUFACTURER_DATA = 0x23
 
 # BatteryMode bits
-BATTERY_MODE_CAPACITY_MODE = 1 << 7   # 0 = mAh, 1 = 10 mWh
+BATTERY_MODE_CAPACITY_MODE = 1 << 7  # 0 = mAh, 1 = 10 mWh
 BATTERY_MODE_CHARGER_MODE = 1 << 13
 BATTERY_MODE_ALARM_MODE = 1 << 15
 
@@ -82,7 +81,7 @@ def raw_temp_to_celsius(raw: int) -> float:
     return raw / 10.0 - 273.15
 
 
-def decode_status(status: int) -> List[str]:
+def decode_status(status: int) -> list[str]:
     flags = []
     if status & BS_ERROR:
         flags.append("ERROR")
@@ -101,7 +100,7 @@ def decode_status(status: int) -> List[str]:
     return flags
 
 
-def charge_state_from(status: int, current_ma: Optional[int]) -> ChargeState:
+def charge_state_from(status: int, current_ma: int | None) -> ChargeState:
     if status & BS_DISCHARGING or (current_ma is not None and current_ma < 0):
         return ChargeState.DISCHARGING
     if current_ma is not None and current_ma > 0:
@@ -113,7 +112,7 @@ def charge_state_from(status: int, current_ma: Optional[int]) -> ChargeState:
     return ChargeState.UNKNOWN
 
 
-def decode_manufacture_date(raw: int) -> Optional[str]:
+def decode_manufacture_date(raw: int) -> str | None:
     """SBS ManufactureDate: bit0-4 day, 5-8 month, 9-15 year-1980."""
     if not raw or raw == 0xFFFF:
         return None
@@ -189,7 +188,7 @@ def fmt_word_value(reg: int, raw: int) -> str:
         return "unavailable (0xFFFF)"
     if reg == 0x08:
         return f"{raw_temp_to_celsius(raw):.1f} °C (raw {raw})"
-    if reg in (0x0A,):                       # signed current
+    if reg in (0x0A,):  # signed current
         return f"{to_signed16(raw):+d} mA"
     if reg == 0x18:
         return decode_spec_info(raw)
@@ -199,7 +198,7 @@ def fmt_word_value(reg: int, raw: int) -> str:
         return decode_serial(raw)
     if reg == 0x14:
         return f"0x{raw:04X} ({', '.join(decode_status(raw)).lower() or 'idle'})"
-    if reg in (0x03, 0x04):                  # mode / AtRate signed
+    if reg in (0x03, 0x04):  # mode / AtRate signed
         return f"0x{raw:04X}" if reg == 0x03 else f"{to_signed16(raw):+d} "
     return f"{raw:d}"
 
@@ -216,13 +215,13 @@ class SBSGauge:
     def read_word(self, reg: int) -> int:
         return self.bus.read_word(self.addr, reg)
 
-    def read_word_maybe(self, reg: int) -> Optional[int]:
+    def read_word_maybe(self, reg: int) -> int | None:
         try:
             return self.read_word(reg)
         except SMbusError:
             return None
 
-    def read_block_maybe(self, reg: int, length: int = BLOCK_MAX) -> Optional[bytes]:
+    def read_block_maybe(self, reg: int, length: int = BLOCK_MAX) -> bytes | None:
         try:
             return self.bus.read_block(self.addr, reg, length)
         except SMbusError:
@@ -233,100 +232,103 @@ class SBSGauge:
 
     # --- typed register accessors ---
 
-    def temperature_c(self) -> Optional[float]:
+    def temperature_c(self) -> float | None:
         raw = self.read_word_maybe(SBS_TEMPERATURE)
         if raw is None or raw in (0, 0xFFFF):
             return None
         return raw_temp_to_celsius(raw)
 
-    def voltage_mv(self) -> Optional[float]:
+    def voltage_mv(self) -> float | None:
         raw = self.read_word_maybe(SBS_VOLTAGE)
         return float(raw) if raw is not None and raw != 0xFFFF else None
 
-    def current_ma(self) -> Optional[int]:
+    def current_ma(self) -> int | None:
         raw = self.read_word_maybe(SBS_CURRENT)
         return to_signed16(raw) if raw is not None and raw != 0xFFFF else None
 
-    def relative_soc(self) -> Optional[float]:
+    def relative_soc(self) -> float | None:
         raw = self.read_word_maybe(SBS_RELATIVE_SOC)
         return float(raw) if raw is not None and raw <= 100 else None
 
-    def absolute_soc(self) -> Optional[float]:
+    def absolute_soc(self) -> float | None:
         raw = self.read_word_maybe(SBS_ABSOLUTE_SOC)
         return float(raw) if raw is not None and raw <= 100 else None
 
-    def battery_status(self) -> Optional[int]:
+    def battery_status(self) -> int | None:
         return self.read_word_maybe(SBS_BATTERY_STATUS)
 
-    def status_flags(self) -> List[str]:
+    def status_flags(self) -> list[str]:
         st = self.battery_status()
         return decode_status(st) if st is not None else []
 
-    def battery_mode(self) -> Optional[int]:
+    def battery_mode(self) -> int | None:
         return self.read_word_maybe(SBS_BATTERY_MODE)
 
     def capacity_mode_is_mwh(self) -> bool:
         mode = self.battery_mode()
         return bool(mode is not None and mode & BATTERY_MODE_CAPACITY_MODE)
 
-    def design_voltage_mv(self) -> Optional[float]:
+    def design_voltage_mv(self) -> float | None:
         raw = self.read_word_maybe(SBS_DESIGN_VOLTAGE)
         return float(raw) if raw is not None and raw != 0xFFFF else None
 
-    def _cap_raw(self, reg: int) -> Optional[int]:
+    def _cap_raw(self, reg: int) -> int | None:
         raw = self.read_word_maybe(reg)
         if raw is None or raw in (0, 0xFFFF):
             return None
         return raw
 
-    def design_capacity(self) -> Optional[int]:
+    def design_capacity(self) -> int | None:
         """DesignCapacity in native units (mAh, or 10 mWh in CAPACITY_MODE)."""
         return self._cap_raw(SBS_DESIGN_CAPACITY)
 
-    def full_charge_capacity(self) -> Optional[int]:
+    def full_charge_capacity(self) -> int | None:
         return self._cap_raw(SBS_FULL_CHARGE_CAPACITY)
 
-    def remaining_capacity(self) -> Optional[int]:
+    def remaining_capacity(self) -> int | None:
         return self._cap_raw(SBS_REMAINING_CAPACITY)
 
-    def cycle_count(self) -> Optional[int]:
+    def cycle_count(self) -> int | None:
         raw = self.read_word_maybe(SBS_CYCLE_COUNT)
         return raw if raw is not None and raw != 0xFFFF else None
 
-    def serial_number(self) -> Optional[str]:
+    def serial_number(self) -> str | None:
         raw = self.read_word_maybe(SBS_SERIAL_NUMBER)
         return f"0x{raw:04X}" if raw is not None and raw != 0xFFFF else None
 
-    def manufacture_date(self) -> Optional[str]:
+    def manufacture_date(self) -> str | None:
         raw = self.read_word_maybe(SBS_MANUFACTURE_DATE)
         return decode_manufacture_date(raw) if raw is not None else None
 
     # --- strings (block reads: byte0 = length) ---
 
-    def _read_string(self, reg: int) -> Optional[str]:
+    def _read_string(self, reg: int) -> str | None:
         raw = self.read_block_maybe(reg)
         if not raw:
             return None
         n = raw[0]
         if n == 0 or n == 0xFF:
             return None
-        return bytes(raw[1:1 + n]).decode("ascii", "replace").strip("\x00").strip() or None
+        return (
+            bytes(raw[1 : 1 + n]).decode("ascii", "replace").strip("\x00").strip()
+            or None
+        )
 
-    def manufacturer_name(self) -> Optional[str]:
+    def manufacturer_name(self) -> str | None:
         return self._read_string(SBS_MANUFACTURER_NAME)
 
-    def device_name(self) -> Optional[str]:
+    def device_name(self) -> str | None:
         return self._read_string(SBS_DEVICE_NAME)
 
-    def device_chemistry(self) -> Optional[str]:
+    def device_chemistry(self) -> str | None:
         return self._read_string(SBS_DEVICE_CHEMISTRY)
 
-    def manufacturer_data(self) -> Optional[bytes]:
+    def manufacturer_data(self) -> bytes | None:
         raw = self.read_block_maybe(SBS_MANUFACTURER_DATA)
         if not raw:
             return None
         n = raw[0]
-        return bytes(raw[1:1 + n]) or None
+        return bytes(raw[1 : 1 + n]) or None
 
     # --- capacity unit conversion -------------------------------------
 
@@ -340,8 +342,10 @@ class SBSGauge:
 
     def is_present(self) -> bool:
         """Cheap probe: a real SBS gauge answers a Voltage or Status read."""
-        return (self.read_word_maybe(SBS_VOLTAGE) is not None or
-                self.read_word_maybe(SBS_BATTERY_STATUS) is not None)
+        return (
+            self.read_word_maybe(SBS_VOLTAGE) is not None
+            or self.read_word_maybe(SBS_BATTERY_STATUS) is not None
+        )
 
     def snapshot(self) -> BatteryInfo:
         """One full read pass -> BatteryInfo (raises SMbusError if absent)."""
@@ -422,13 +426,15 @@ class SBSGauge:
             s = self._read_string(reg)
             rows.append((f"0x{reg:02X}", name, "block", "", s or "—"))
         raw23 = self.manufacturer_data()
-        rows.append(("0x23", "ManufacturerData", "block", "",
-                     raw23.hex(" ") if raw23 else "—"))
+        rows.append(
+            ("0x23", "ManufacturerData", "block", "", raw23.hex(" ") if raw23 else "—")
+        )
         # ManufacturerInfo() is a plain pass-through block read on SBS
         # gauges; publishes firmware / IC details on most gauge families.
         raw70 = self.read_block_maybe(0x70)
-        rows.append(("0x70", "ManufacturerInfo", "block", "",
-                     raw70.hex(" ") if raw70 else "—"))
+        rows.append(
+            ("0x70", "ManufacturerInfo", "block", "", raw70.hex(" ") if raw70 else "—")
+        )
         return rows
 
     # --- guarded write path (SBS ManufacturerAccess) -------------------
@@ -438,8 +444,7 @@ class SBSGauge:
         self.write_word(SBS_MANUFACTURER_ACCESS, word)
 
 
-def scan_for_gauge(bus: SMbusBus,
-                   addresses=SCAN_ADDRESSES) -> Optional[int]:
+def scan_for_gauge(bus: SMbusBus, addresses=SCAN_ADDRESSES) -> int | None:
     """Return the first address that answers like an SBS gauge, else None."""
     for addr in addresses:
         g = SBSGauge(bus, addr)
@@ -448,8 +453,7 @@ def scan_for_gauge(bus: SMbusBus,
     return None
 
 
-def scan_for_gauge_detailed(bus: SMbusBus,
-                            addresses=SCAN_ADDRESSES) -> list:
+def scan_for_gauge_detailed(bus: SMbusBus, addresses=SCAN_ADDRESSES) -> list:
     """Probe every address, returning [(addr, status_code), ...] failures.
 
     The batch scan toggles the bus clocks on every address, which doubles as
@@ -462,8 +466,7 @@ def scan_for_gauge_detailed(bus: SMbusBus,
         try:
             bus.read_word(addr, SBS_VOLTAGE)
         except SMbusError as exc:
-            findings.append((addr, exc.status if isinstance(exc.status, int)
-                             else -1))
+            findings.append((addr, exc.status if isinstance(exc.status, int) else -1))
     return findings
 
 
@@ -472,25 +475,41 @@ def describe_scan(findings: list) -> str:
     codes = {c for _, c in findings}
     lines = []
     if codes <= {0x06} or codes == {-1}:
-        lines.append("every address NAKed: the gauge did not answer the "
-                     "SMBus code — most likely causes, in order:")
-        lines.append("1) the pack is unpowered (cells below ~2.5 V/cell "
-                     "means the gauge is shut down — charge the pack briefly)")
-        lines.append("2) the gauge has fallen asleep and woke but no host "
-                     "answered (the scan just toggled clock; scan again)")
-        lines.append("3) missing pull-ups on SDA/SCL (the CP2112 board has "
-                     "protoboarded pull-ups; bare chips need external 10k)")
+        lines.append(
+            "every address NAKed: the gauge did not answer the "
+            "SMBus code — most likely causes, in order:"
+        )
+        lines.append(
+            "1) the pack is unpowered (cells below ~2.5 V/cell "
+            "means the gauge is shut down — charge the pack briefly)"
+        )
+        lines.append(
+            "2) the gauge has fallen asleep and woke but no host "
+            "answered (the scan just toggled clock; scan again)"
+        )
+        lines.append(
+            "3) missing pull-ups on SDA/SCL (the CP2112 board has "
+            "protoboarded pull-ups; bare chips need external 10k)"
+        )
     elif 0x07 in codes or 0x04 in codes:
-        lines.append("the adapter saw bus-level errors (CRC/bus): typical "
-                     "of swapped SDA/SCL, a broken pull-up resistor, or "
-                     "two devices driving the bus. Unpower everything and "
-                     "re-wire; never connect SDA/SCL to a voltage source.")
+        lines.append(
+            "the adapter saw bus-level errors (CRC/bus): typical "
+            "of swapped SDA/SCL, a broken pull-up resistor, or "
+            "two devices driving the bus. Unpower everything and "
+            "re-wire; never connect SDA/SCL to a voltage source."
+        )
     elif 0x05 in codes:
-        lines.append("ACK error on targeted data: the slave is not at that "
-                     "address; then the gate was stuck partially.")
+        lines.append(
+            "ACK error on targeted data: the slave is not at that "
+            "address; then the gate was stuck partially."
+        )
     else:
-        lines.append("mixed adapter statuses; retry the scan, and if it "
-                     "persists share these codes with support.")
-    detail = ", ".join(f"0x{a:02X}:{c:02X}" if c >= 0 else f"0x{a:02X}:?" for a, c in findings)
+        lines.append(
+            "mixed adapter statuses; retry the scan, and if it "
+            "persists share these codes with support."
+        )
+    detail = ", ".join(
+        f"0x{a:02X}:{c:02X}" if c >= 0 else f"0x{a:02X}:?" for a, c in findings
+    )
     lines.append(f"detail: {detail}")
     return "\n".join(lines)

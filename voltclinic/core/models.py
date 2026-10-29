@@ -3,12 +3,12 @@
 Pure data structures with no platform dependencies, so they are testable
 everywhere (including on this Linux dev host).
 """
+
 from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 
 class ChargeState(enum.Enum):
@@ -28,7 +28,7 @@ class Chemistry(enum.Enum):
     UNKNOWN = "Unknown"
 
 
-def normalize_chemistry(raw: Optional[str]) -> Chemistry:
+def normalize_chemistry(raw: str | None) -> Chemistry:
     if not raw:
         return Chemistry.UNKNOWN
     r = raw.strip().lower()
@@ -45,8 +45,9 @@ def normalize_chemistry(raw: Optional[str]) -> Chemistry:
     return Chemistry.UNKNOWN
 
 
-def state_of_health(full_capacity_mwh: Optional[float],
-                    design_capacity_mwh: Optional[float]) -> Optional[float]:
+def state_of_health(
+    full_capacity_mwh: float | None, design_capacity_mwh: float | None
+) -> float | None:
     """Return SoH as a percentage (0-100+) or None if unknown."""
     if full_capacity_mwh is None or design_capacity_mwh is None:
         return None
@@ -64,32 +65,32 @@ class BatteryInfo:
     manufacturer: str = "Unknown"
     serial_number: str = "Unknown"
     chemistry: Chemistry = Chemistry.UNKNOWN
-    design_capacity_mwh: Optional[float] = None
-    full_capacity_mwh: Optional[float] = None
-    current_mwh: Optional[float] = None          # remaining energy
-    current_ma: Optional[float] = None           # signed; + charge, - discharge
-    voltage_mv: Optional[float] = None
-    design_voltage_mv: Optional[float] = None    # SBS DesignVoltage (pack cells)
-    relative_soc: Optional[float] = None         # SBS RelativeStateOfCharge %
-    absolute_soc: Optional[float] = None         # SBS AbsoluteStateOfCharge %
-    manufacture_date: Optional[str] = None       # SBS ManufactureDate ISO date
-    temperature_c: Optional[float] = None
-    cycle_count: Optional[int] = None
+    design_capacity_mwh: float | None = None
+    full_capacity_mwh: float | None = None
+    current_mwh: float | None = None  # remaining energy
+    current_ma: float | None = None  # signed; + charge, - discharge
+    voltage_mv: float | None = None
+    design_voltage_mv: float | None = None  # SBS DesignVoltage (pack cells)
+    relative_soc: float | None = None  # SBS RelativeStateOfCharge %
+    absolute_soc: float | None = None  # SBS AbsoluteStateOfCharge %
+    manufacture_date: str | None = None  # SBS ManufactureDate ISO date
+    temperature_c: float | None = None
+    cycle_count: int | None = None
     charge_state: ChargeState = ChargeState.UNKNOWN
     ac_online: bool = False
-    charge_rate_mw: Optional[float] = None
-    discharge_rate_mw: Optional[float] = None
-    estimated_time_remaining_min: Optional[int] = None
-    firmware_version: Optional[str] = None
+    charge_rate_mw: float | None = None
+    discharge_rate_mw: float | None = None
+    estimated_time_remaining_min: int | None = None
+    firmware_version: str | None = None
     raw: dict = field(default_factory=dict)
     collected_at: datetime = field(default_factory=datetime.now)
 
     @property
-    def soh_percent(self) -> Optional[float]:
+    def soh_percent(self) -> float | None:
         return state_of_health(self.full_capacity_mwh, self.design_capacity_mwh)
 
     @property
-    def remaining_percent(self) -> Optional[float]:
+    def remaining_percent(self) -> float | None:
         if self.full_capacity_mwh in (None, 0):
             return None
         if self.current_mwh is None:
@@ -119,18 +120,27 @@ class BatteryInfo:
             f"Serial:         {self.serial_number}",
             f"Chemistry:      {self.chemistry.value}",
         ]
+
         def fmt(v, unit):
             return f"{v:.0f} {unit}" if v is not None else "Unknown"
+
         lines.append(f"Design capacity:{fmt(self.design_capacity_mwh, 'mWh')}")
         lines.append(f"Full capacity:  {fmt(self.full_capacity_mwh, 'mWh')}")
-        lines.append(f"State of Health:{self.health_label} "
-                     f"({soh:.1f}%)" if (soh := self.soh_percent) is not None
-                     else "State of Health: Unknown")
-        lines.append(f"Remaining:      {fmt(self.current_mwh, 'mWh')}"
-                     f" ({self.remaining_percent:.0f}%)" if self.remaining_percent is not None
-                     else f"Remaining:      {fmt(self.current_mwh, 'mWh')}")
+        lines.append(
+            f"State of Health:{self.health_label} ({soh:.1f}%)"
+            if (soh := self.soh_percent) is not None
+            else "State of Health: Unknown"
+        )
+        lines.append(
+            f"Remaining:      {fmt(self.current_mwh, 'mWh')}"
+            f" ({self.remaining_percent:.0f}%)"
+            if self.remaining_percent is not None
+            else f"Remaining:      {fmt(self.current_mwh, 'mWh')}"
+        )
         lines.append(f"Charge rate:    {fmt(self.charge_rate_mw, 'mW')}")
         lines.append(f"Discharge rate: {fmt(self.discharge_rate_mw, 'mW')}")
-        lines.append(f"Cycle count:    {self.cycle_count if self.cycle_count is not None else 'Unknown'}")
+        lines.append(
+            f"Cycle count:    {self.cycle_count if self.cycle_count is not None else 'Unknown'}"
+        )
         lines.append(f"Firmware:       {self.firmware_version or 'Unknown'}")
         return lines

@@ -1,4 +1,5 @@
 """Main application window: sidebar navigation + stacked pages."""
+
 from __future__ import annotations
 
 import os
@@ -31,6 +32,7 @@ class _UpdateBridge(QObject):
     Qt widgets must only be touched from the GUI thread; the updater runs in
     plain Python threads, so its results travel through these signals.
     """
+
     result = Signal(object)
     download_progress = Signal(int, int)
     download_done = Signal(object)
@@ -44,6 +46,7 @@ class MainWindow(QWidget):
         icon_path = resource_path("icon.ico")
         if os.path.exists(icon_path):
             from PySide6.QtGui import QIcon
+
             self.setWindowIcon(QIcon(icon_path))
 
         root = QHBoxLayout(self)
@@ -130,6 +133,7 @@ class MainWindow(QWidget):
 
     def trigger_update_check(self, silent: bool = False) -> None:
         from ..updater import check_in_background
+
         self._update_test = os.environ.get("BATTERYCLINIC_SELFTEST") == "update"
         self._update_silent = silent
         self.update_btn.setEnabled(False)
@@ -149,6 +153,7 @@ class MainWindow(QWidget):
     @staticmethod
     def _delayed_exit() -> None:
         import time
+
         time.sleep(0.5)
         os._exit(0)
 
@@ -159,8 +164,10 @@ class MainWindow(QWidget):
         if result.error:
             outcome = f"error: {result.error}"
         elif result.update is not None and result.is_newer:
-            outcome = (f"update-available: {result.update.latest_version} "
-                       f"({len(result.update.installers)} installer asset(s))")
+            outcome = (
+                f"update-available: {result.update.latest_version} "
+                f"({len(result.update.installers)} installer asset(s))"
+            )
         else:
             outcome = "up-to-date"
 
@@ -170,33 +177,43 @@ class MainWindow(QWidget):
 
         if result.error:
             if not self._update_silent:
-                QMessageBox.information(self, "VoltClinic",
-                                        f"Could not check for updates: {result.error}")
+                QMessageBox.information(
+                    self, "VoltClinic", f"Could not check for updates: {result.error}"
+                )
             return
         if not result.update or not result.is_newer:
             if not self._update_silent:
-                QMessageBox.information(self, "VoltClinic",
-                                        f"You're on the latest version (v{__version__}).")
+                QMessageBox.information(
+                    self,
+                    "VoltClinic",
+                    f"You're on the latest version (v{__version__}).",
+                )
             return
 
         info = result.update
         if not info.installers:
-            QMessageBox.information(self, "VoltClinic",
-                                    f"VoltClinic {info.latest_version} is available.\n"
-                                    f"Open {info.release_url} to download it.")
+            QMessageBox.information(
+                self,
+                "VoltClinic",
+                f"VoltClinic {info.latest_version} is available.\n"
+                f"Open {info.release_url} to download it.",
+            )
             return
 
         ret = QMessageBox.question(
-            self, "Update available",
+            self,
+            "Update available",
             f"VoltClinic {info.latest_version} is available "
             f"(you have v{__version__}).\n\n"
-            f"Download and run the installer now?")
+            f"Download and run the installer now?",
+        )
         if ret != QMessageBox.StandardButton.Yes:
             return
         self._download_and_install(info.installers[0])
 
     def _download_and_install(self, url: str) -> None:
         from ..updater import download
+
         self.update_btn.setEnabled(False)
         self.update_btn.setText("Downloading… 0%")
 
@@ -204,8 +221,12 @@ class MainWindow(QWidget):
             try:
                 path = download(
                     url,
-                    progress=lambda total, done:
-                        self._update_bridge.download_progress.emit(int(total), int(done)))
+                    progress=lambda total, done: (
+                        self._update_bridge.download_progress.emit(
+                            int(total), int(done)
+                        )
+                    ),
+                )
                 self._update_bridge.download_done.emit(path)
             except Exception as exc:  # noqa: BLE001
                 self._update_bridge.download_done.emit(exc)
@@ -223,13 +244,16 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, "Download failed", str(payload))
             return
         from ..updater import launch_installer
+
         if launch_installer(payload):
             QMessageBox.information(
-                self, "Updater",
+                self,
+                "Updater",
                 "Downloaded. The installer has been launched.\n\n"
-                "VoltClinic will close and be replaced by the new version.")
+                "VoltClinic will close and be replaced by the new version.",
+            )
             self.close()
         else:
             QMessageBox.information(
-                self, "Updater", f"Saved installer to:\n{payload}\n\nRun it to install.")
-
+                self, "Updater", f"Saved installer to:\n{payload}\n\nRun it to install."
+            )
