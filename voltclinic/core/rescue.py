@@ -28,6 +28,35 @@ MAC_PFSTATUS = 0x0053           # 4-byte PF flag word pair
 MAC_OPERATIONSTATUS = 0x0054
 MAC_SAFETYSTATUS = 0x0051
 MAC_PFALERT = 0x0052
+MAC_DASTATUS1 = 0x0057          # DAStatus1: first entry is CellVoltage1..n + telemetry
+MANUFACTURER_BLOCK_ACCESS = 0x44  # ManufacturerBlockAccess(), result block
+
+
+def read_cell_voltages(bus: SMbusBus, addr: int, consent: str,
+                       max_cells: int = 8) -> List[float]:
+    """Read cell voltages via the public TI DAStatus1 subcommand.
+
+    On the bq40z50 (public TRM) DAStatus1() places CellVoltage1..4 as the
+    first little-endian words of the ManufacturerBlockAccess result. This
+    is a write on the wire (ManufacturerAccess subcommand select), so it
+    is consent-gated like every other manufacturer command.
+
+    Returns the list of plausible Li-ion cell voltages in mV (scanning
+    until a word leaves the 2500-4300 mV window or max_cells is reached).
+    """
+    if not consent:
+        raise SMbusError(
+            "cell voltage reads are gated: pass operator consent")
+    bus.write_word(addr, SBS_MANUFACTURER_ACCESS, MAC_DASTATUS1)
+    raw = bus.read_block(addr, MANUFACTURER_BLOCK_ACCESS, 32)
+    cells: List[float] = []
+    for i in range(0, min(max_cells * 2, len(raw) - 1), 2):
+        v = raw[i] | (raw[i + 1] << 8)
+        if not (2500 <= v <= 4300):
+            break
+        cells.append(float(v))
+    return cells
+
 
 # PFStatus() named flag bits (bits 15:0, public TRM listing; 31:16 shown raw).
 _PFSTATUS_BITS = [

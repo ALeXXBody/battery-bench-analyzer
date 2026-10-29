@@ -48,7 +48,8 @@ class FakeGaugeBus(SMbusBus):
                  design_mah: int = 4200, full_mah: int = 3100,
                  cycles: int = 402, soc: float = 60.0,
                  charge_rate_pct_s: float = 6.0,
-                 discharge_rate_pct_s: float = 8.0):
+                 discharge_rate_pct_s: float = 8.0,
+                 cells_mv=(3980, 3990, 4000)):
         self.addr = addr
         self.design_mah = design_mah
         self.full_mah = full_mah
@@ -56,9 +57,11 @@ class FakeGaugeBus(SMbusBus):
         self.soc = soc
         self.charge_rate_pct_s = charge_rate_pct_s
         self.discharge_rate_pct_s = discharge_rate_pct_s
+        self.cells_mv = tuple(cells_mv)
         self.mode = "idle"
         self.writes: List[tuple] = []
         self._last = time.monotonic()
+        self._dastatus = False
         self.blocks = {
             0x20: _prefixed(b"VoltTeq"),
             0x21: _prefixed(b"DEMO-PAK-3S"),
@@ -151,9 +154,16 @@ class FakeGaugeBus(SMbusBus):
     def write_word(self, addr: int, reg: int, value: int) -> None:
         self._check(addr)
         self.writes.append((addr, reg, value))
+        if reg == 0x00 and value == 0x0057:   # TI DAStatus1 select
+            self._dastatus = True
 
     def read_block(self, addr: int, reg: int, length: int) -> bytes:
         self._check(addr)
+        if reg == 0x44 and self._dastatus:    # ManufacturerBlockAccess reply
+            out = bytearray()
+            for mv in self.cells_mv:
+                out += bytes([mv & 0xFF, (mv >> 8) & 0xFF])
+            return out
         if reg in self.blocks:
             return self.blocks[reg]
         raise SMbusError(f"unsupported block register 0x{reg:02X}")

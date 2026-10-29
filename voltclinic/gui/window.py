@@ -20,7 +20,6 @@ from ..core.bench import SessionHolder
 from .app import resource_path
 from .connection import ConnectionBar
 from .pages.analyze import AnalyzePage
-from .pages.info import InfoPage
 from .pages.regen import RegenPage
 from .pages.unlock import UnlockPage
 
@@ -70,20 +69,17 @@ class MainWindow(QWidget):
         self.bench = SessionHolder()
         self.conn_bar = ConnectionBar(self.bench)
         self.analyze_page = AnalyzePage(self.bench, self.conn_bar)
-        self.info_page = InfoPage(self.bench)
         self.regen_page = RegenPage(self.bench)
         self.unlock_page = UnlockPage(self.bench)
         self.stack.addWidget(self.analyze_page)
-        self.stack.addWidget(self.info_page)
         self.stack.addWidget(self.regen_page)
         self.stack.addWidget(self.unlock_page)
 
         self._nav_buttons: list[QPushButton] = []
         nav_items = [
             ("Analyze", 0),
-            ("Battery Info", 1),
-            ("Regenerate", 2),
-            ("Repair / Unlock", 3),
+            ("Regenerate", 1),
+            ("Repair / Unlock", 2),
         ]
         for label, idx in nav_items:
             btn = QPushButton(label)
