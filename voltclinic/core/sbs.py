@@ -424,6 +424,11 @@ class SBSGauge:
         raw23 = self.manufacturer_data()
         rows.append(("0x23", "ManufacturerData", "block", "",
                      raw23.hex(" ") if raw23 else "—"))
+        # ManufacturerInfo() is a plain pass-through block read on SBS
+        # gauges; publishes firmware / IC details on most gauge families.
+        raw70 = self.read_block_maybe(0x70)
+        rows.append(("0x70", "ManufacturerInfo", "block", "",
+                     raw70.hex(" ") if raw70 else "—"))
         return rows
 
     # --- guarded write path (SBS ManufacturerAccess) -------------------

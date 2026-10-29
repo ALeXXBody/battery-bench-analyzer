@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -30,8 +31,8 @@ class ConnectionBar(QWidget):
         self.bench = bench
         self.setObjectName("connBar")
 
-        row = QHBoxLayout(self)
-        row.setContentsMargins(16, 8, 16, 8)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
 
         title = QLabel("Connection")
@@ -74,6 +75,21 @@ class ConnectionBar(QWidget):
         self.status = QLabel("Not connected")
         self.status.setObjectName("connStatus")
         row.addWidget(self.status)
+
+        guide = QLabel(
+            "Bench wiring: the pack's gauge D→SDA, C→SCL, one \"-\"→GND; "
+            "SBS gauges usually answer at address 0x0B (Scan finds it).")
+        guide.setObjectName("connGuide")
+        guide.setWordWrap(True)
+        row2 = QHBoxLayout()
+        row2.setContentsMargins(0, 0, 0, 4)
+        row2.addWidget(guide, 1)
+
+        bar = QVBoxLayout(self)
+        bar.setContentsMargins(16, 8, 16, 4)
+        bar.setSpacing(2)
+        bar.addLayout(row)
+        bar.addLayout(row2)
 
     # -- public API used by pages (e.g. rescue) -------------------------
 

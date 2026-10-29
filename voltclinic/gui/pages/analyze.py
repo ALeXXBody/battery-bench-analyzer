@@ -59,19 +59,13 @@ class AnalyzePage(QWidget):
         outer.setContentsMargins(24, 24, 24, 24)
         outer.setSpacing(12)
 
-        title = QLabel("Bench Analyzer")
-        title.setObjectName("sectionHeader")
-        outer.addWidget(title)
-
-        self.hint = QLabel(
-            "Open an adapter with the connection bar above, then switch "
-            "through these tabs. Everything here is read-only except the "
-            "consent-gated cell-voltage and rescue flows.")
-        self.hint.setWordWrap(True)
-        outer.addWidget(self.hint)
-
         self.tabs = QTabWidget()
         outer.addWidget(self.tabs, 1)
+
+        # compact dynamic status line (refresh/result/error messages only)
+        self.hint = QLabel("")
+        self.hint.setWordWrap(True)
+        outer.addWidget(self.hint)
         self.tabs.addTab(self._build_overview(), "Overview")
         self.tabs.addTab(self._build_cells(), "Cells / Analysis")
         self.tabs.addTab(self._build_live(), "Live data")
