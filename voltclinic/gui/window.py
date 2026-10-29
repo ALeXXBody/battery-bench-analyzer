@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..core.bench import SessionHolder
 from .app import resource_path
+from .connection import ConnectionBar
 from .pages.analyze import AnalyzePage
 from .pages.info import InfoPage
 from .pages.regen import RegenPage
@@ -67,7 +68,8 @@ class MainWindow(QWidget):
 
         self.stack = QStackedWidget()
         self.bench = SessionHolder()
-        self.analyze_page = AnalyzePage(self.bench)
+        self.conn_bar = ConnectionBar(self.bench)
+        self.analyze_page = AnalyzePage(self.bench, self.conn_bar)
         self.info_page = InfoPage(self.bench)
         self.regen_page = RegenPage(self.bench)
         self.unlock_page = UnlockPage(self.bench)
@@ -101,7 +103,14 @@ class MainWindow(QWidget):
         side.addWidget(self.update_btn)
 
         root.addWidget(sidebar)
-        root.addWidget(self.stack, 1)
+
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        content_layout.addWidget(self.conn_bar)
+        content_layout.addWidget(self.stack, 1)
+        root.addWidget(content, 1)
 
         self._go(0, self._nav_buttons[0])
 

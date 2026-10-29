@@ -143,8 +143,9 @@ class InfoPage(QWidget):
         session = self._session()
         if not session:
             self.hint.setText(
-                "Connect a battery on the Analyze page first — all tabs "
-                "here are read-only over that session.")
+                "Open an adapter or the Demo battery with the connection "
+                "bar at the top — all tabs here are read-only over that "
+                "session.")
             return
         self.hint.setText(
             f"Reading {session.adapter_name} @ 0x{session.addr:02X} "
