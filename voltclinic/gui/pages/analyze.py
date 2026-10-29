@@ -11,9 +11,10 @@ consumer of the shared bench session and is organised as tabs:
 from __future__ import annotations
 
 import csv
+import threading
 import time
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -39,6 +40,12 @@ from ..widgets import card, stat_card, stat_row
 
 def _fmt(v, unit, digits=0):
     return f"{v:.{digits}f} {unit}" if v is not None else "—"
+
+
+class _RescueBridge(QObject):
+    """Marshals the rescue worker thread's result onto the GUI thread."""
+
+    result = Signal(object)
 
 
 class AnalyzePage(QWidget):
@@ -453,7 +460,7 @@ class AnalyzePage(QWidget):
     # ------------------------------------------------------------------
 
     def _rescue(self) -> None:
-        """Wake + diagnose a silent pack; results land in the banner."""
+        """Start wake + diagnose on a background thread (GUI stays live)."""
         if self._rescue_busy:
             return
         connected_demo = (self.bench.session is not None
@@ -486,19 +493,29 @@ class AnalyzePage(QWidget):
         self.rescue_btn.setEnabled(False)
         self.conn.set_busy(True)
         self.banner.setText(
-            "Rescuing: toggling the SMBus clocks — keep the pack powered…")
-        QApplication.processEvents()
+            "Rescuing: toggling the SMBus clocks — keep the pack powered… "
+            "(the window stays responsive; this takes ~15 seconds)")
+        self._rescue_bridge = _RescueBridge()
+        self._rescue_bridge.result.connect(self._on_rescue_result)
+        threading.Thread(
+            target=self._rescue_worker, args=(bus, run_rescue),
+            daemon=True).start()
+
+    def _rescue_worker(self, bus, run_rescue) -> None:
         try:
-            out = run_rescue(bus, consent=self.objectName() + "-rescue-consent",
-                             wake_seconds=15.0)
+            out = run_rescue(
+                bus, consent=self.objectName() + "-rescue-consent",
+                wake_seconds=15.0)
         except Exception as exc:  # noqa: BLE001
-            self.banner.setText(f"Rescue failed: {exc}")
-            out = None
-        finally:
-            self._rescue_busy = False
-            self.rescue_btn.setEnabled(True)
-            self.conn.set_busy(False)
-        if out is None:
+            out = {"error": f"{type(exc).__name__}: {exc}"}
+        self._rescue_bridge.result.emit(out)
+
+    def _on_rescue_result(self, out: dict) -> None:
+        self._rescue_busy = False
+        self.rescue_btn.setEnabled(True)
+        self.conn.set_busy(False)
+        if out.get("error"):
+            self.banner.setText(f"Rescue failed: {out['error']}")
             return
         if not out.get("addr"):
             self.banner.setText(
