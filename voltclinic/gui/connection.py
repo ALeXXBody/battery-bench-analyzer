@@ -186,13 +186,22 @@ class ConnectionBar(QWidget):
             session = GaugeSession.open(adapter, addr)
         except SMbusError as exc:
             diag(f"connect failed: {exc}")
-            self.status.setText("Connection failed — see Help → Connecting")
-            self._show_detail(str(exc))
+            msg = str(exc)
+            if "CP2112" in msg and "adapter" in msg and "found" in msg:
+                self.status.setText("Connection failed: no CP2112 adapter found")
+                self._hide_detail()
+                return
+            if "ROTOOL" in msg or "rotool" in msg.lower():
+                self.status.setText("Connection failed: ROTOOL")
+                self._hide_detail()
+                return
+            self.status.setText("Connection failed")
+            self._hide_detail()
             return
         except Exception as exc:  # noqa: BLE001
             diag(f"connect failed (unexpected): {type(exc).__name__}: {exc}")
-            self.status.setText("Connection failed — see Help → Connecting")
-            self._show_detail(str(exc))
+            self.status.setText("Connection failed")
+            self._hide_detail()
             return
         self.bench.session = session
         self._set_connected(True)
@@ -224,5 +233,5 @@ class ConnectionBar(QWidget):
             return
         from ..core.sbs import describe_scan, scan_for_gauge_detailed
 
-        self.status.setText("Scan: no gauge answered — see Help → Connecting")
-        self._show_detail(describe_scan(scan_for_gauge_detailed(session.bus)))
+        self.status.setText("Scan: no gauge answered")
+        self._hide_detail()
