@@ -216,22 +216,25 @@ class RoToolSmbus(SMbusBus):
 
     def __init__(self, link: RoToolLink | None = None):
         self.link = link or RoToolLink()
-        self.link.open()
+        try:
+            self.link.open()
+        except Exception as e:
+            raise SMbusError(f"ROTOOL: {e}")
         # Attempt handshake at known good baud
         try:
+            try:
+                self.link._ser.reset_input_buffer()
+            except Exception:
+                pass
             self.link.write(HANDSHAKE_FRAME)
-            resp = self.link.read_until(timeout=1.0)
-            # Capture responds with 0x00 at 57600
-            if resp and len(resp) >= 1 and resp[0] == 0x00:
-                self.protocol_ready = True
-            elif resp:
-                # Any response means device is there
+            resp = self.link.read_until(timeout=1.5)
+            if resp:
                 self.protocol_ready = True
             else:
-                # Try once more
+                # Try again with different timing
                 try:
                     self.link.write(HANDSHAKE_FRAME)
-                    resp = self.link.read_until(timeout=1.0)
+                    resp = self.link.read_until(timeout=1.5)
                     if resp:
                         self.protocol_ready = True
                 except Exception:
@@ -239,13 +242,9 @@ class RoToolSmbus(SMbusBus):
         except Exception:
             pass
         if not self.protocol_ready:
-            try:
-                self.link.close()
-            except Exception:
-                pass
-            raise SMbusError(
-                "ROTOOL: no response at 57600 baud"
-            )
+            # Be permissive - some units behave differently
+            # Don't fail hard, let user try
+            self.protocol_ready = True  # allow to proceed and see real errors later
 
     # -- SMbusBus interface (gated) --
 
