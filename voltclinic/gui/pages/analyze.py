@@ -1,4 +1,4 @@
-"""Bench Analyzer page: one merged NLBA-style workspace.
+"""Bench Analyzer page: one merged bench-analysis workspace.
 
 Connection lives in the app-level ConnectionBar; this page is a pure
 consumer of the shared bench session and is organised as tabs:

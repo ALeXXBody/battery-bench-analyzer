@@ -1,4 +1,4 @@
-"""Tests for the NLBA-style pack analysis and consent-gated cell reads."""
+"""Tests for the analyzer-style pack analysis and consent-gated cell reads."""
 import pytest
 
 from voltclinic.core.analysis import (analyse, classify_imbalance,

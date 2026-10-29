@@ -1,4 +1,4 @@
-"""Pack analysis: NLBA-style verdict computed from SBS data + cell readings.
+"""Pack analysis: bench-analyzer verdict computed from SBS data + cell readings.
 
 Read-only arithmetic over already-fetched information. Per-cell voltages
 themselves come from consent-gated TI ManufacturerAccess reads elsewhere
