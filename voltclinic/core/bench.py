@@ -221,7 +221,7 @@ class GaugeSession:
         else:
             raise SMbusError(f"unknown adapter: {adapter!r}")
         g = SBSGauge(bus, addr)
-        if not g.is_present():
+        if not g.is_present() and adapter != "rotool":
             close = getattr(bus, "close", None)
             if close:
                 close()
