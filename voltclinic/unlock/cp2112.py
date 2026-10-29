@@ -500,11 +500,15 @@ class Cp2112Smbus(SMbusBus):
             api = HidApi()
         except HidException:  # pragma: no cover
             return []
-        return [
+        adapters = [
             (p, v, i)
             for (p, v, i) in api.enumerate_hid_paths()
             if v == CP2112_VID and i == CP2112_PID
         ]
+        if not adapters:
+            # Auto-detect any HID device as fallback
+            adapters = list(api.enumerate_hid_paths())
+        return adapters
 
     @staticmethod
     def _open_first(api: HidApi):
@@ -515,6 +519,12 @@ class Cp2112Smbus(SMbusBus):
                 except HidException as exc:
                     Cp2112Smbus._diag(f"cp2112: open failed for {path}: {exc}")
                     continue
+        # Try all devices as fallback
+        for path, vid, pid in api.enumerate_hid_paths():
+            try:
+                return api.open_device(path, vid, pid)
+            except HidException:
+                continue
         return None
 
     def _configure(self) -> None:
