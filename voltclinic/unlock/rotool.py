@@ -39,18 +39,29 @@ def list_rotool_ports() -> list[str]:
     """Return serial port names that look like a ROTOOL bridge.
 
     Detection is by the USB VID:PID of the bridge chip when available;
-    falls back to common vendor-neutral naming on platforms without
-    per-port identity enumeration.
+    also scan all ports as fallback.
     """
     try:
         from serial.tools import list_ports
     except ImportError:  # pragma: no cover - pyserial is a core dependency
         return []
     found: list[str] = []
+    # First pass: match by VID:PID
     for p in list_ports.comports():
         vid = getattr(p, "vid", None)
         pid = getattr(p, "pid", None)
         if (vid, pid) == (ROTOOL_BRIDGE_VID, ROTOOL_BRIDGE_PID):
+            found.append(p.device)
+    if found:
+        return found
+    # Second pass: look for Prolific/USB-Serial in description
+    for p in list_ports.comports():
+        desc = (getattr(p, "description", "") or "").lower()
+        if "prolific" in desc or "usb-serial" in desc or "ch340" in desc or "cp210" in desc:
+            found.append(p.device)
+    # Third pass: return all ports as last resort
+    if not found:
+        for p in list_ports.comports():
             found.append(p.device)
     return found
 
@@ -209,27 +220,31 @@ class RoToolSmbus(SMbusBus):
         # Attempt handshake at known good baud
         try:
             self.link.write(HANDSHAKE_FRAME)
-            resp = self.link.read_until(timeout=0.8)
+            resp = self.link.read_until(timeout=1.0)
             # Capture responds with 0x00 at 57600
-            if resp == bytes([0x00]) or (len(resp) == 1 and resp[0] == 0x00):
+            if resp and len(resp) >= 1 and resp[0] == 0x00:
+                self.protocol_ready = True
+            elif resp:
+                # Any response means device is there
                 self.protocol_ready = True
             else:
-                # Still try to proceed if we got any response
-                if resp:
-                    self.protocol_ready = True
+                # Try once more
+                try:
+                    self.link.write(HANDSHAKE_FRAME)
+                    resp = self.link.read_until(timeout=1.0)
+                    if resp:
+                        self.protocol_ready = True
+                except Exception:
+                    pass
         except Exception:
             pass
         if not self.protocol_ready:
-            # Keep permissive enough to test - but don't write arbitrary things
-            # For now, if handshake didn't confirm, we'll still allow reads
-            # but the real protocol needs to be mapped from more captures
             try:
                 self.link.close()
             except Exception:
                 pass
             raise SMbusError(
-                "ROTOOL adapter: handshake failed at 57600 baud. "
-                "Check COM port/DTR-RTS and try again."
+                "ROTOOL: no response at 57600 baud"
             )
 
     # -- SMbusBus interface (gated) --
