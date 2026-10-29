@@ -100,6 +100,11 @@ class HelpPage(QWidget):
         body.setWordWrap(True)
         body.setTextFormat(Qt.TextFormat.RichText)
         body.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        body.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        body.setCursor(Qt.CursorShape.IBeamCursor)
         lay.addWidget(body)
         lay.addStretch(1)
         scroll.setWidget(inner)

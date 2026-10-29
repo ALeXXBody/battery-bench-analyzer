@@ -122,6 +122,11 @@ class AnalyzePage(QWidget):
 
         self.banner = QLabel("")
         self.banner.setWordWrap(True)
+        self.banner.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        self.banner.setCursor(Qt.CursorShape.IBeamCursor)
         lay.addWidget(self.banner)
         lay.addStretch(1)
         return w

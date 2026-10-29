@@ -8,6 +8,7 @@ about a page — it only opens/closes the session in the shared
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -76,12 +77,18 @@ class ConnectionBar(QWidget):
         row.addStretch(1)
         self.status = QLabel("Not connected")
         self.status.setObjectName("connStatus")
+        self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         row.addWidget(self.status)
 
         # full-width detail line for long connect/scan failure text
         self.detail = QLabel("")
         self.detail.setObjectName("connDetail")
         self.detail.setWordWrap(True)
+        self.detail.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        self.detail.setCursor(Qt.CursorShape.IBeamCursor)
         self.detail.hide()
 
         bar = QVBoxLayout(self)
