@@ -513,7 +513,7 @@ class AnalyzePage(QWidget):
                     self.banner.setText(f"Rescue couldn't open the adapter: {exc}")
                     return
             else:
-                self.banner.setText("Rescue: choose the CP2112 adapter for now.")
+                self.banner.setText("Select CP2112 in the connection bar.")
                 return
         QMessageBox.information(
             self,

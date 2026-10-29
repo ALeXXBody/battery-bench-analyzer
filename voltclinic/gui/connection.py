@@ -175,12 +175,12 @@ class ConnectionBar(QWidget):
             session = GaugeSession.open(adapter, addr)
         except SMbusError as exc:
             diag(f"connect failed: {exc}")
-            self.status.setText("Connection failed")
+            self.status.setText("Connection failed — see Help → Connecting")
             self._show_detail(str(exc))
             return
         except Exception as exc:  # noqa: BLE001
             diag(f"connect failed (unexpected): {type(exc).__name__}: {exc}")
-            self.status.setText("Connection failed")
+            self.status.setText("Connection failed — see Help → Connecting")
             self._show_detail(str(exc))
             return
         self.bench.session = session
@@ -213,5 +213,5 @@ class ConnectionBar(QWidget):
             return
         from ..core.sbs import describe_scan, scan_for_gauge_detailed
 
-        self.status.setText("Scan: no gauge answered")
+        self.status.setText("Scan: no gauge answered — see Help → Connecting")
         self._show_detail(describe_scan(scan_for_gauge_detailed(session.bus)))
