@@ -74,11 +74,14 @@ class ConnectionBar(QWidget):
         self.demo_btn.clicked.connect(self._demo)
         row.addWidget(self.demo_btn)
 
-        row.addStretch(1)
         self.status = QLabel("Not connected")
         self.status.setObjectName("connStatus")
-        self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        row.addWidget(self.status)
+        self.status.setWordWrap(True)
+        self.status.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        self.status.setCursor(Qt.CursorShape.IBeamCursor)
 
         # full-width detail line for long connect/scan failure text
         self.detail = QLabel("")
@@ -95,6 +98,7 @@ class ConnectionBar(QWidget):
         bar.setContentsMargins(16, 8, 16, 4)
         bar.setSpacing(2)
         bar.addLayout(row)
+        bar.addWidget(self.status)
         bar.addWidget(self.detail)
 
     def _show_detail(self, text: str) -> None:
