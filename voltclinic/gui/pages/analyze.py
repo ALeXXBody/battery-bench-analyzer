@@ -509,16 +509,12 @@ class AnalyzePage(QWidget):
             bus = FakeGaugeBus()
         else:
             adapter = self.conn.selected_adapter()
-            if adapter == "cp2112":
-                from ...unlock.cp2112 import Cp2112Smbus
+            from ...core.bench import open_bus
 
-                try:
-                    bus = Cp2112Smbus()
-                except SMbusError as exc:
-                    self.banner.setText(f"Rescue couldn't open the adapter: {exc}")
-                    return
-            else:
-                self.banner.setText("Select CP2112 in the connection bar.")
+            try:
+                bus = open_bus(adapter)
+            except SMbusError as exc:
+                self.banner.setText(f"Rescue couldn't open the adapter: {exc}")
                 return
         QMessageBox.information(
             self,

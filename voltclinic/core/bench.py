@@ -214,6 +214,10 @@ class GaugeSession:
             from ..unlock.cp2112 import Cp2112Smbus
 
             bus = Cp2112Smbus()
+        elif adapter == "mcp2221":
+            from ..unlock.mcp2221 import Mcp2221Smbus
+
+            bus = Mcp2221Smbus()
         elif adapter == "rotool":
             from ..unlock.rotool import RoToolSmbus
 
@@ -290,6 +294,10 @@ def open_bus(adapter: str) -> SMbusBus:
         from ..unlock.cp2112 import Cp2112Smbus
 
         return Cp2112Smbus()
+    if adapter == "mcp2221":
+        from ..unlock.mcp2221 import Mcp2221Smbus
+
+        return Mcp2221Smbus()
     if adapter == "rotool":
         from ..unlock.rotool import RoToolSmbus
 

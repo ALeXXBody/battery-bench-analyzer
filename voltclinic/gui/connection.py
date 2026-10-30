@@ -7,8 +7,7 @@ about a page — it only opens/closes the session in the shared
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -43,6 +42,7 @@ class ConnectionBar(QWidget):
 
         self.adapter_box = QComboBox()
         self.adapter_box.addItem("CP2112 USB-SMBus adapter")
+        self.adapter_box.addItem("MCP2221A USB-SMBus adapter")
         self.adapter_box.addItem("ROTOOL USB analyzer")
         row.addWidget(self.adapter_box)
 
@@ -101,6 +101,16 @@ class ConnectionBar(QWidget):
         bar.addWidget(self.status)
         bar.addWidget(self.detail)
 
+        # Auto-detection: when a USB adapter is plugged in, select it
+        # automatically (the operator can still override with the dropdown).
+        self._detected_snapshot: list[str] | None = None
+        self._detect_timer = QTimer(self)
+        self._detect_timer.setInterval(2000)
+        self._detect_timer.timeout.connect(self._autodetect)
+        self._initial_autodetect = True
+        self._autodetect()  # instant first pass
+        self._detect_timer.start()
+
     def _show_detail(self, text: str) -> None:
         self.detail.setText(text)
         self.detail.setVisible(bool(text))
@@ -127,7 +137,8 @@ class ConnectionBar(QWidget):
 
     def selected_adapter(self) -> str:
         idx = self.adapter_box.currentIndex()
-        return ("cp2112", "rotool")[idx if 0 <= idx <= 1 else 0]
+        names = ("cp2112", "mcp2221", "rotool")
+        return names[idx if 0 <= idx < len(names) else 0]
 
     def selected_addr(self) -> int:
         try:
@@ -162,6 +173,47 @@ class ConnectionBar(QWidget):
 
     # -- actions ---------------------------------------------------------
 
+    @staticmethod
+    def _failure_status(message: str) -> str:
+        """Short one-line failure text; device-specific when recognizable."""
+        import re
+
+        m = re.search(r"no ([\w]+(?: [\w]+)*?) adapter found", message)
+        if m:
+            return f"Connection failed: no {m.group(1).strip()} adapter found"
+        if "ROTOOL" in message:
+            return "Connection failed: ROTOOL"
+        return "Connection failed"
+
+    def _autodetect(self) -> None:
+        """Pick a detected adapter automatically while nothing is connected.
+
+        Only reselects when the set of connected devices changed, so a
+        manual dropdown choice survives; and hover-free: the first pass is
+        silent, later changes announce in the status line.
+        """
+        from ..unlock.autodetect import detect_adapters, label_for
+
+        try:
+            detected = detect_adapters()
+        except Exception:  # noqa: BLE001 - polling must never crash the UI
+            return
+        prev = self._detected_snapshot
+        self._detected_snapshot = list(detected)
+        if self.bench.session is not None:
+            return
+        if detected == prev:
+            return
+        if not detected:
+            return
+        only = detected[0]
+        idx = ("cp2112", "mcp2221", "rotool").index(only)
+        if self.adapter_box.currentIndex() != idx:
+            self.adapter_box.setCurrentIndex(idx)
+            suffix = "" if self._initial_autodetect else " (auto-selected via USB)"
+            self.status.setText(f"Detected: {label_for(only)}{suffix}")
+        self._initial_autodetect = False
+
     def _demo(self) -> None:
         """Open the simulated battery (button is disabled while connected)."""
         from ..core.diaglog import log as diag
@@ -186,21 +238,12 @@ class ConnectionBar(QWidget):
             session = GaugeSession.open(adapter, addr)
         except SMbusError as exc:
             diag(f"connect failed: {exc}")
-            msg = str(exc)
-            if "CP2112" in msg and "adapter" in msg and "found" in msg:
-                self.status.setText("Connection failed: no CP2112 adapter found")
-                self._hide_detail()
-                return
-            if "ROTOOL" in msg or "rotool" in msg.lower():
-                self.status.setText("Connection failed: ROTOOL")
-                self._hide_detail()
-                return
-            self.status.setText("Connection failed")
+            self.status.setText(self._failure_status(str(exc)))
             self._hide_detail()
             return
         except Exception as exc:  # noqa: BLE001
             diag(f"connect failed (unexpected): {type(exc).__name__}: {exc}")
-            self.status.setText("Connection failed")
+            self.status.setText(self._failure_status(str(exc)))
             self._hide_detail()
             return
         self.bench.session = session
@@ -231,7 +274,6 @@ class ConnectionBar(QWidget):
             self._hide_detail()
             self.status.setText(f"Scan: gauge answered at 0x{found:02X}")
             return
-        from ..core.sbs import describe_scan, scan_for_gauge_detailed
 
         self.status.setText("Scan: no gauge answered")
         self._hide_detail()
