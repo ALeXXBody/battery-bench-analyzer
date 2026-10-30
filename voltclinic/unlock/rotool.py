@@ -12,7 +12,6 @@ documentation only; no proprietary vendor code is reused.
 from __future__ import annotations
 
 import time
-from typing import Optional
 
 from .smbus import SMbusBus, SMbusError
 
@@ -46,7 +45,7 @@ def list_rotool_ports() -> list[str]:
     except ImportError:  # pragma: no cover - pyserial is a core dependency
         return []
     found: list[str] = []
-    # First pass: match by VID:PID
+    # First pass: match by VID:PID (never open arbitrary COM ports).
     for p in list_ports.comports():
         vid = getattr(p, "vid", None)
         pid = getattr(p, "pid", None)
@@ -54,14 +53,11 @@ def list_rotool_ports() -> list[str]:
             found.append(p.device)
     if found:
         return found
-    # Second pass: look for Prolific/USB-Serial in description
+    # Second pass: drivers that hide VID:PID but describe themselves as
+    # the Prolific-class bridge used by the analyzer.
     for p in list_ports.comports():
         desc = (getattr(p, "description", "") or "").lower()
-        if "prolific" in desc or "usb-serial" in desc or "ch340" in desc or "cp210" in desc:
-            found.append(p.device)
-    # Third pass: return all ports as last resort
-    if not found:
-        for p in list_ports.comports():
+        if "prolific" in desc or "usb-serial" in desc or "usb-to-serial" in desc:
             found.append(p.device)
     return found
 
@@ -218,33 +214,32 @@ class RoToolSmbus(SMbusBus):
         self.link = link or RoToolLink()
         try:
             self.link.open()
+        except SMbusError:
+            raise
         except Exception as e:
-            raise SMbusError(f"ROTOOL: {e}")
-        # Attempt handshake at known good baud
+            raise SMbusError(f"ROTOOL: {e}") from e
+        self.protocol_ready = False
         try:
-            try:
-                self.link._ser.reset_input_buffer()
-            except Exception:
-                pass
-            self.link.write(HANDSHAKE_FRAME)
-            resp = self.link.read_until(timeout=1.5)
-            if resp:
-                self.protocol_ready = True
-            else:
-                # Try again with different timing
+            for _ in range(2):
                 try:
-                    self.link.write(HANDSHAKE_FRAME)
-                    resp = self.link.read_until(timeout=1.5)
-                    if resp:
-                        self.protocol_ready = True
-                except Exception:
+                    self.link._ser.reset_input_buffer()
+                except Exception:  # noqa: BLE001
                     pass
-        except Exception:
-            pass
+                self.link.write(HANDSHAKE_FRAME)
+                resp = self.link.read_until(timeout=1.0)
+                if resp:  # any reply means the analyzer is listening
+                    self.protocol_ready = True
+                    break
+        except SMbusError:
+            self.link.close()
+            raise
+        except Exception as e:
+            raise SMbusError(f"ROTOOL serial failure: {e}") from e
         if not self.protocol_ready:
-            # Be permissive - some units behave differently
-            # Don't fail hard, let user try
-            self.protocol_ready = True  # allow to proceed and see real errors later
+            self.link.close()
+            raise SMbusError(
+                "ROTOOL: found but not responding (57600 baud)"
+            )
 
     # -- SMbusBus interface (gated) --
 
