@@ -176,24 +176,88 @@ class UnlockPage(QWidget):
             )
         return session.gauge.read_word_maybe(reg)
 
+    _ALARM_MEANINGS = {
+        "time_alarm": "runtime estimate dropped below the alarm point",
+        "capacity_alarm": "remaining charge dropped below the alarm point",
+        "terminate_discharge": "pack hit the low cutoff — near empty",
+        "terminate_charge_alarm": "pack says STOP charging now",
+        "overtemp_alarm": "temperature out of range",
+        "terminate_charge": "last charge cycle ended (limit reached)",
+        "over_charged": "pack reports it was over-charged",
+        "error": "battery fault reported",
+        "fully_discharged": "pack fully discharged",
+        "fully_charged": "pack fully charged",
+        "discharging": "pack is discharging right now",
+        "initialization": "gauge still initializing",
+    }
+
+    @staticmethod
+    def _explained_flags(status: int) -> tuple[str, str]:
+        """Return (explained flag lines, residual vendor bits text)."""
+        from ...core.sbs import (
+            BS_DISCHARGING,
+            BS_ERROR,
+            BS_FULLY_CHARGED,
+            BS_FULLY_DISCHARGED,
+            BS_INITIALIZATION,
+            BS_OVER_CHARGED,
+            BS_OVERTEMP,
+            BS_REMAINING_CAPACITY_ALARM,
+            BS_REMAINING_TIME_ALARM,
+            BS_TERMINATE_CHARGE,
+            BS_TERMINATE_CHARGE_ALARM,
+            BS_TERMINATE_DISCHARGE,
+        )
+
+        known = decode_status(status)
+        lines = []
+        for f in known:
+            meaning = UnlockPage._ALARM_MEANINGS.get(f.lower(), "")
+            lines.append(f"  {f.lower():<22} = {meaning}" if meaning else "")
+        lines = [x for x in lines if x] or ["  no warning bits set"]
+        all_bits = (
+            BS_ERROR
+            | BS_FULLY_DISCHARGED
+            | BS_FULLY_CHARGED
+            | BS_DISCHARGING
+            | BS_INITIALIZATION
+            | BS_REMAINING_TIME_ALARM
+            | BS_REMAINING_CAPACITY_ALARM
+            | BS_TERMINATE_DISCHARGE
+            | BS_TERMINATE_CHARGE_ALARM
+            | BS_OVERTEMP
+            | BS_TERMINATE_CHARGE
+            | BS_OVER_CHARGED
+        )
+        vendor = status & ~all_bits & 0xFFFF
+        residual_text = f"vendor-specific bits 0x{vendor:04X}" if vendor else ""
+        return "\n".join(lines), residual_text
+
     def _alarm_report(self, prefix: str = "") -> str:
-        lines = [prefix] if prefix else []
         cap = self._session_word(SBS_REMAINING_CAPACITY_ALARM)
         time_ = self._session_word(SBS_REMAINING_TIME_ALARM)
         status = self._session_word(SBS_BATTERY_STATUS)
-        flags = (
-            ", ".join(decode_status(status)).lower()
-            if status is not None
-            else "unavailable"
-        )
-        lines += [
-            f"RemainingCapacityAlarm (0x01): "
-            f"{'unavailable' if cap is None else f'{cap} mAh'}",
-            f"RemainingTimeAlarm    (0x02): "
-            f"{'unavailable' if time_ is None else f'{time_} min'}",
-            f"BatteryStatus  (0x14): {flags}"
-            + ("" if status is None else f" (0x{status:04X})"),
-        ]
+        lines = []
+        if status is None:
+            lines.append("Status (0x14): unavailable")
+        else:
+            explained, vendor_txt = self._explained_flags(status)
+            lines.append(f"Status (0x14) = 0x{status:04X}:")
+            lines.append(explained)
+            if vendor_txt:
+                lines.append(f"  plus {vendor_txt} (not defined by SBS)")
+            lines.append("")
+            if status & (0x0400 | 0x0200 | 0x0100):
+                lines.append(
+                    "Reads as: the pack is flagging an alarm state. Charge the "
+                    "pack, let it settle, then click Read Alarms again."
+                )
+            lines.append(
+                "Thresholds: capacity "
+                f"{'unavailable' if cap is None else f'{cap} mAh'} · time "
+                f"{'unavailable' if time_ is None else f'{time_} min'} "
+                "(0 = gauge still signals alarm; see Clear Alarms)"
+            )
         return "\n".join(lines)
 
     def _read_alarms(self) -> None:

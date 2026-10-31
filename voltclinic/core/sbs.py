@@ -64,7 +64,12 @@ BS_DISCHARGING = 1 << 12
 BS_INITIALIZATION = 1 << 11
 BS_REMAINING_TIME_ALARM = 1 << 10
 BS_REMAINING_CAPACITY_ALARM = 1 << 9
-# bits 8..0 are manufacturer / chemistry specific
+BS_TERMINATE_DISCHARGE = 1 << 8
+BS_TERMINATE_CHARGE_ALARM = 1 << 7
+BS_OVERTEMP = 1 << 6
+BS_TERMINATE_CHARGE = 1 << 5
+BS_OVER_CHARGED = 1 << 4
+# bits 3..0 are manufacturer / chemistry specific
 
 # Typical gauge addresses on laptop packs (SBS default first)
 DEFAULT_GAUGE_ADDR = 0x0B
@@ -97,6 +102,16 @@ def decode_status(status: int) -> list[str]:
         flags.append("TIME_ALARM")
     if status & BS_REMAINING_CAPACITY_ALARM:
         flags.append("CAPACITY_ALARM")
+    if status & BS_TERMINATE_DISCHARGE:
+        flags.append("TERMINATE_DISCHARGE")
+    if status & BS_TERMINATE_CHARGE_ALARM:
+        flags.append("TERMINATE_CHARGE_ALARM")
+    if status & BS_OVERTEMP:
+        flags.append("OVERTEMP")
+    if status & BS_TERMINATE_CHARGE:
+        flags.append("TERMINATE_CHARGE")
+    if status & BS_OVER_CHARGED:
+        flags.append("OVER_CHARGED")
     return flags
 
 
