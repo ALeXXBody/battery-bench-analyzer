@@ -2,7 +2,7 @@
 
 import pytest
 
-from voltclinic.unlock.mcp2221 import (
+from benchanalyzer.unlock.mcp2221 import (
     CMD_I2C_GET_DATA,
     CMD_I2C_PARAM_OR_STATUS,
     CMD_I2C_READ_RSTART,
@@ -21,8 +21,7 @@ from voltclinic.unlock.mcp2221 import (
     parse_status,
     scl_divider,
 )
-from voltclinic.unlock.smbus import SMbusError
-
+from benchanalyzer.unlock.smbus import SMbusError
 
 # -- Part A: framing purity -------------------------------------------------
 

@@ -1,4 +1,4 @@
-"""Modern dark theme for the VoltClinic GUI (QSS)."""
+"""Modern dark theme for the Battery Bench Analyzer GUI (QSS)."""
 
 from __future__ import annotations
 

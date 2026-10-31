@@ -237,9 +237,7 @@ class RoToolSmbus(SMbusBus):
             raise SMbusError(f"ROTOOL serial failure: {e}") from e
         if not self.protocol_ready:
             self.link.close()
-            raise SMbusError(
-                "ROTOOL: found but not responding (57600 baud)"
-            )
+            raise SMbusError("ROTOOL: found but not responding (57600 baud)")
 
     # -- SMbusBus interface (gated) --
 

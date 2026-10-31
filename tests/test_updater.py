@@ -1,13 +1,12 @@
 """Tests for the GitHub-Releases updater's pure logic + live-HTTP behavior."""
+
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-import voltclinic.updater as up
-from voltclinic.updater import (
-    CheckResult,
+from benchanalyzer.updater import (
     fetch_latest,
     is_newer,
     matches_installer,
@@ -27,22 +26,25 @@ def test_is_newer():
     assert is_newer("0.2.0", "0.1.0")
     assert is_newer("1.0.0", "0.9.9")
     assert is_newer("v0.2.0", "0.2.0") is False  # equal
-    assert is_newer("0.1.0", "0.2.0") is False   # older
+    assert is_newer("0.1.0", "0.2.0") is False  # older
     assert is_newer("0.2.0", "nonsense") is False  # bad current
 
 
 def test_matches_installer():
-    assert matches_installer("VoltClinic-0.2.0-setup.exe")
-    assert matches_installer("VoltClinic-setup.exe")
-    assert not matches_installer("VoltClinic.exe")       # portable exe, not installer
+    assert matches_installer("BatteryBenchAnalyzer-0.2.0-setup.exe")
+    assert matches_installer("BatteryBenchAnalyzer-setup.exe")
+    assert not matches_installer(
+        "BatteryBenchAnalyzer.exe"
+    )  # portable exe, not installer
     assert not matches_installer("OtherClinic-0.2.0-setup.exe")
-    assert not matches_installer("VoltClinic-0.2.0.msi")
+    assert not matches_installer("BatteryBenchAnalyzer-0.2.0.msi")
     assert not matches_installer("")
 
 
 # ---------------------------------------------------------------------------
 # Live HTTP behavior against a local server (no mocks, no external network)
 # ---------------------------------------------------------------------------
+
 
 def _serve(handler_cls):
     srv = HTTPServer(("127.0.0.1", 0), handler_cls)
@@ -80,7 +82,7 @@ def feed_server(monkeypatch):
         cls = type("_FeedInst", (_Feed,), attrs)
         srv, url = _serve(cls)
         holder["srv"] = srv
-        monkeypatch.setenv("VOLTCLINIC_RELEASE_API", url + "/releases")
+        monkeypatch.setenv("BENCHANALYZER_RELEASE_API", url + "/releases")
         return url
 
     yield _start
@@ -104,10 +106,14 @@ def test_fetch_latest_newer_release_detected(feed_server):
         "tag_name": "v9.9.9",
         "html_url": "http://example.invalid/r",
         "assets": [
-            {"name": "VoltClinic.exe",
-             "browser_download_url": "http://x/VoltClinic.exe"},
-            {"name": "VoltClinic-9.9.9-setup.exe",
-             "browser_download_url": "http://x/VoltClinic-9.9.9-setup.exe"},
+            {
+                "name": "BatteryBenchAnalyzer.exe",
+                "browser_download_url": "http://x/BatteryBenchAnalyzer.exe",
+            },
+            {
+                "name": "BatteryBenchAnalyzer-9.9.9-setup.exe",
+                "browser_download_url": "http://x/BatteryBenchAnalyzer-9.9.9-setup.exe",
+            },
         ],
     }
     feed_server(status=200, payload=payload)
@@ -116,11 +122,11 @@ def test_fetch_latest_newer_release_detected(feed_server):
     assert r.is_newer is True
     assert r.update.latest_version == "9.9.9"
     # only the -setup.exe asset counts as an installer
-    assert r.update.installers == ["http://x/VoltClinic-9.9.9-setup.exe"]
+    assert r.update.installers == ["http://x/BatteryBenchAnalyzer-9.9.9-setup.exe"]
 
 
 def test_fetch_latest_same_version_is_up_to_date(feed_server):
-    payload = {"tag_name": "v" + __import__("voltclinic").__version__, "assets": []}
+    payload = {"tag_name": "v" + __import__("benchanalyzer").__version__, "assets": []}
     feed_server(status=200, payload=payload)
     r = fetch_latest(timeout=5)
     assert r.error is None

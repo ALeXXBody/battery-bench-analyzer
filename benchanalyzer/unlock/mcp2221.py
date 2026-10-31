@@ -307,9 +307,7 @@ class Mcp2221Smbus(SMbusBus):
         except SMbusError:
             return
         self.state, nack = parse_status(resp)
-        if nack or not (
-            self.state == S_OK or is_recoverable(self.state)
-        ):
+        if nack or not (self.state == S_OK or is_recoverable(self.state)):
             self._cancel()
 
     def _raise(self, state: int, addr: int) -> None:

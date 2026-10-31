@@ -72,8 +72,8 @@ class HelpPage(QWidget):
             ),
             (
                 "Logs",
-                "Diagnostics land in %LOCALAPPDATA%\\VoltClinic\\diag.log "
-                "(Windows) or ~/.voltclinic/diag.log (Linux/macOS) — include "
+                "Diagnostics land in %LOCALAPPDATA%\\BatteryBenchAnalyzer\\diag.log "
+                "(Windows) or ~/.benchanalyzer/diag.log (Linux/macOS) — include "
                 "the last lines when reporting an issue.",
             ),
         )

@@ -1,6 +1,7 @@
 """Auto-update via GitHub Releases.
 
-VoltClinic publishes its installer to a GitHub *release* for each version tag
+Battery Bench Analyzer publishes its installer as a GitHub *release*
+per version tag
 (e.g. ``v0.2.0``). This module checks that release feed, compares the semver
 of the latest release with the running version, and — when a newer release
 exists — can download the new installer to a temp file and launch it.
@@ -24,18 +25,23 @@ from dataclasses import dataclass, field
 
 from . import __version__
 
-# Where VoltClinic publishes installers. Change here if you self-host.
-# Overridable for testing/mirrors: VOLTCLINIC_RELEASE_API
-DEFAULT_RELEASE_API = "https://api.github.com/repos/ALeXXBody/voltclinic/releases"
+# Where Battery Bench Analyzer publishes installers. Change here if you self-host.
+# Overridable for testing/mirrors: BENCHANALYZER_RELEASE_API
+DEFAULT_RELEASE_API = (
+    "https://api.github.com/repos/ALeXXBody/battery-bench-analyzer/releases"
+)
 
 
 def _release_api() -> str:
-    return os.environ.get("VOLTCLINIC_RELEASE_API", DEFAULT_RELEASE_API)
+    return os.environ.get("BENCHANALYZER_RELEASE_API", DEFAULT_RELEASE_API)
 
 
 # Asset filename the updater prefers (matches the Inno Setup output and the
-# version baked into the installer, e.g. VoltClinic-0.2.0-setup.exe).
-ASSET_PREFIX = "VoltClinic"
+# version baked into the installer, e.g. BatteryBenchAnalyzer-0.2.0-setup.exe).
+ASSET_PREFIX = "BatteryBenchAnalyzer"
+# Legacy prefix: installs from before the rename still find the
+# renamed releases during the migration window.
+ASSET_PREFIXES = (ASSET_PREFIX, "VoltClinic")
 
 _semver_re = re.compile(r"^\s*v?(\d+)\.(\d+)\.(\d+)(?:[-+](\S+))?\s*$")
 
@@ -73,8 +79,8 @@ def is_newer(latest: str, current: str) -> bool:
 
 
 def matches_installer(name: str) -> bool:
-    """True if ``name`` is a VoltClinic Windows installer asset (pure helper)."""
-    return bool(name.startswith(ASSET_PREFIX) and name.endswith("-setup.exe"))
+    """True if ``name`` is an installer asset for the app (pure helper)."""
+    return bool(name.startswith(ASSET_PREFIXES) and name.endswith("-setup.exe"))
 
 
 def fetch_latest(timeout: int = 15) -> CheckResult:
@@ -87,7 +93,7 @@ def fetch_latest(timeout: int = 15) -> CheckResult:
         req = urllib.request.Request(
             _release_api() + "/latest",
             headers={
-                "User-Agent": "VoltClinic/" + __version__,
+                "User-Agent": "BatteryBenchAnalyzer/" + __version__,
                 "Accept": "application/vnd.github+json",
             },
         )
@@ -135,10 +141,10 @@ def download(
     ``progress(total, done)`` is called as chunks arrive; use for a progress UI.
     """
     dest_dir = dest_dir or tempfile.gettempdir()
-    fname = url.split("/")[-1] or "voltclinic-update.exe"
+    fname = url.split("/")[-1] or "benchanalyzer-update.exe"
     dest = os.path.join(dest_dir, fname)
     req = urllib.request.Request(
-        url, headers={"User-Agent": "VoltClinic/" + __version__}
+        url, headers={"User-Agent": "BatteryBenchAnalyzer/" + __version__}
     )
     with urllib.request.urlopen(req, timeout=60) as resp:
         total = int(resp.headers.get("Content-Length", 0) or 0)

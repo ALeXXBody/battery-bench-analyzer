@@ -1,8 +1,9 @@
 """Tests for the Smart Battery Data register layer (pure, no hardware)."""
+
 import pytest
 
-from voltclinic.core.bench import FakeGaugeBus
-from voltclinic.core.sbs import (
+from benchanalyzer.core.bench import FakeGaugeBus
+from benchanalyzer.core.sbs import (
     BS_DISCHARGING,
     BS_FULLY_CHARGED,
     BS_FULLY_DISCHARGED,
@@ -25,7 +26,7 @@ from voltclinic.core.sbs import (
     scan_for_gauge,
     to_signed16,
 )
-from voltclinic.unlock.smbus import (
+from benchanalyzer.unlock.smbus import (
     SB_BATTERY_STATUS,
     SB_CURRENT,
     SB_CYCLE_COUNT,

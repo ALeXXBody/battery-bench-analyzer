@@ -140,7 +140,8 @@ class BatteryInfo:
         lines.append(f"Charge rate:    {fmt(self.charge_rate_mw, 'mW')}")
         lines.append(f"Discharge rate: {fmt(self.discharge_rate_mw, 'mW')}")
         lines.append(
-            f"Cycle count:    {self.cycle_count if self.cycle_count is not None else 'Unknown'}"
+            f"Cycle count:    "
+            f"{self.cycle_count if self.cycle_count is not None else 'Unknown'}"
         )
         lines.append(f"Firmware:       {self.firmware_version or 'Unknown'}")
         return lines

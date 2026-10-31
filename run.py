@@ -1,7 +1,7 @@
-"""PyInstaller / direct-run entry point for VoltClinic."""
+"""PyInstaller / direct-run entry point for Battery Bench Analyzer."""
 import sys
 
-from voltclinic.__main__ import main
+from benchanalyzer.__main__ import main
 
 if __name__ == "__main__":
     sys.exit(main())

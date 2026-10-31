@@ -1,7 +1,8 @@
 """Tests for the battery data model and health calculations."""
+
 import pytest
 
-from voltclinic.core.models import (
+from benchanalyzer.core.models import (
     BatteryInfo,
     ChargeState,
     Chemistry,
@@ -10,18 +11,21 @@ from voltclinic.core.models import (
 )
 
 
-@pytest.mark.parametrize("raw,expected", [
-    ("Li-Ion", Chemistry.LI_ION),
-    ("LION", Chemistry.LI_ION),
-    ("Lithium Polymer", Chemistry.LI_POLYMER),
-    ("li-poly", Chemistry.LI_POLYMER),
-    ("NiMH", Chemistry.NI_MH),
-    ("NiCd", Chemistry.NI_CD),
-    ("LiFePO4", Chemistry.LFP),
-    ("Bogus", Chemistry.UNKNOWN),
-    (None, Chemistry.UNKNOWN),
-    ("", Chemistry.UNKNOWN),
-])
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("Li-Ion", Chemistry.LI_ION),
+        ("LION", Chemistry.LI_ION),
+        ("Lithium Polymer", Chemistry.LI_POLYMER),
+        ("li-poly", Chemistry.LI_POLYMER),
+        ("NiMH", Chemistry.NI_MH),
+        ("NiCd", Chemistry.NI_CD),
+        ("LiFePO4", Chemistry.LFP),
+        ("Bogus", Chemistry.UNKNOWN),
+        (None, Chemistry.UNKNOWN),
+        ("", Chemistry.UNKNOWN),
+    ],
+)
 def test_normalize_chemistry(raw, expected):
     assert normalize_chemistry(raw) == expected
 

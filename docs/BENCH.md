@@ -1,6 +1,6 @@
 # Bench Setup Guide
 
-VoltClinic is built for **out-of-circuit battery work**: the pack comes out of
+Battery Bench Analyzer is built for **out-of-circuit battery work**: the pack comes out of
 the device and onto the bench, where its fuel gauge is wired to a USB-SMBus
 adapter. The app talks to the gauge directly — it does **not** use (or need)
 the host machine's own battery.
@@ -36,7 +36,7 @@ the BatteryStatus alarm flags.
 1. Bench Analyzer page → adapter **CP2112** (or **Demo gauge** without
    hardware) → **Connect**.
 2. Identity block + live telemetry (1 s polling) appear.
-3. CLI equivalent: `voltclinic analyze --adapter cp2112 --watch 30`.
+3. CLI equivalent: `benchanalyzer analyze --adapter cp2112 --watch 30`.
 
 > **ROTOOL adapter**: the ROTOOL USB bench analyzer (serial/COM-port device)
 > is selectable in the adapter list, but is disabled until its MCU handshake
@@ -46,7 +46,7 @@ the BatteryStatus alarm flags.
 
 ## Calibrate (learn cycle)
 
-A gauge re-learns true capacity from a full learn cycle. VoltClinic *guides*
+A gauge re-learns true capacity from a full learn cycle. Battery Bench Analyzer *guides*
 the cycle — **you** switch the bench power, the app watches the gauge:
 
 1. **Charge** to full (gauge raises FULLY_CHARGED),
@@ -54,7 +54,7 @@ the cycle — **you** switch the bench power, the app watches the gauge:
 3. **Recharge** to full; the gauge then reports its learned
    FullChargeCapacity.
 
-The app records FCC/SoH before and after. CLI: `voltclinic calibrate --adapter
+The app records FCC/SoH before and after. CLI: `benchanalyzer calibrate --adapter
 cp2112 --low 10`.
 
 Safety: the pack's firmware and your bench supply remain the actual limits.
@@ -65,5 +65,5 @@ rather than revive physically failed cells.
 
 Read-only probe plus an **opt-in**, consent-gated write path
 (`ManufacturerAccess` and word writes) for people who know their gauge's
-register map. VoltClinic ships no vendor unlock/EEPROM routines on purpose —
+register map. Battery Bench Analyzer ships no vendor unlock/EEPROM routines on purpose —
 see [UNLOCK.md](UNLOCK.md).

@@ -1,6 +1,6 @@
 """Application entry for the PySide6 GUI.
 
-BATTERYCLINIC_SELFTEST=1 makes the app start, render the main window, then
+BATTERYBENCH_SELFTEST=1 makes the app start, render the main window, then
 exit cleanly after a moment and write ``selftest_ok.txt`` to the CWD.
 This allows headless verification (QT_QPA_PLATFORM=offscreen) of packaged
 builds without a display. The quit is driven from a plain Python thread
@@ -41,7 +41,9 @@ def _install_crash_hook() -> None:
             from PySide6.QtWidgets import QMessageBox
 
             box = QMessageBox(
-                QMessageBox.Critical, "VoltClinic error", f"{kind.__name__}: {value}"
+                QMessageBox.Critical,
+                "Battery Bench Analyzer error",
+                f"{kind.__name__}: {value}",
             )
             box.setDetailedText(detail)
             box.exec()
@@ -73,13 +75,14 @@ def main() -> int:
     from ..core.diaglog import log as diag
 
     diag(
-        f"VoltClinic {__version__} started (frozen={bool(getattr(sys, 'frozen', False))})"
+        f"Battery Bench Analyzer {__version__} started "
+        f"(frozen={bool(getattr(sys, 'frozen', False))})"
     )
 
     app = QApplication(sys.argv)
-    app.setApplicationName("VoltClinic")
+    app.setApplicationName("Battery Bench Analyzer")
     app.setApplicationVersion(__version__)
-    app.setOrganizationName("VoltClinic")
+    app.setOrganizationName("Battery Bench Analyzer")
     app.setStyleSheet(DARK_THEME)
     icon_path = resource_path("icon.ico")
     if os.path.exists(icon_path):
@@ -88,7 +91,7 @@ def main() -> int:
     win = MainWindow()
     win.show()
 
-    selftest = os.environ.get("BATTERYCLINIC_SELFTEST", "")
+    selftest = os.environ.get("BATTERYBENCH_SELFTEST", "")
     if selftest == "update":
         # Headless update-flow test: click the real button, the window logs
         # the outcome to selftest_ok.txt and exits (see MainWindow).

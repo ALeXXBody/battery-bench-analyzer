@@ -1,11 +1,11 @@
 """Tests for the analyzer-style pack analysis and consent-gated cell reads."""
+
 import pytest
 
-from voltclinic.core.analysis import (analyse, classify_imbalance,
-                                     estimate_cell_count)
-from voltclinic.core.bench import FakeGaugeBus
-from voltclinic.core.rescue import read_cell_voltages
-from voltclinic.unlock.smbus import SMbusError
+from benchanalyzer.core.analysis import analyse, classify_imbalance, estimate_cell_count
+from benchanalyzer.core.bench import FakeGaugeBus
+from benchanalyzer.core.rescue import read_cell_voltages
+from benchanalyzer.unlock.smbus import SMbusError
 
 
 def _info_with(design=4200, full=4000, cycles=120, design_v=11100):
@@ -16,6 +16,7 @@ def _info_with(design=4200, full=4000, cycles=120, design_v=11100):
 
         def __getattr__(self, name):
             return None
+
     return _I()
 
 
@@ -43,9 +44,11 @@ def test_imbalance_states():
 
 
 def test_imbalance_and_cell_count_warning():
-    r = analyse(_info_with(design_v=11100),  # 3S pack
-                cell_voltages_mv=[3980, 3990, 4120],  # but 3 readings, gap 140
-                temperature_c=25.0)
+    r = analyse(
+        _info_with(design_v=11100),  # 3S pack
+        cell_voltages_mv=[3980, 3990, 4120],  # but 3 readings, gap 140
+        temperature_c=25.0,
+    )
     assert r.imbalance_mv == 140
     assert r.imbalance_state == "severely unbalanced"
     assert any("imbalance" in w for w in r.warnings)
@@ -72,7 +75,7 @@ def test_cell_read_requires_consent():
 
 
 def test_cell_read_off_demo_gauge():
-    bus = FakeGaugeBus()          # cells 3980/3990/4000 mV
+    bus = FakeGaugeBus()  # cells 3980/3990/4000 mV
     cells = read_cell_voltages(bus, 0x0B, consent="test")
     assert cells == [3980.0, 3990.0, 4000.0]
     # the diagnostic write happened on the wire exactly once per read

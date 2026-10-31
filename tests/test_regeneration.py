@@ -1,12 +1,11 @@
 """Tests for the regeneration/calibration engine using a scripted fake reader."""
+
 from __future__ import annotations
 
 import time
 
-import pytest
-
-from voltclinic.core.models import BatteryInfo, ChargeState
-from voltclinic.core.regeneration import (
+from benchanalyzer.core.models import BatteryInfo, ChargeState
+from benchanalyzer.core.regeneration import (
     NoopPowerPolicy,
     RegenerationEngine,
     RegenerationResult,
@@ -24,8 +23,7 @@ class ScriptedBattery:
 
     def info(self) -> BatteryInfo:
         self.polls += 1
-        state = (ChargeState.FULL if self.pct >= 99.0
-                 else ChargeState.DISCHARGING)
+        state = ChargeState.FULL if self.pct >= 99.0 else ChargeState.DISCHARGING
         return BatteryInfo(
             name="Fake",
             design_capacity_mwh=42000,
@@ -46,6 +44,7 @@ class _FakeReader:
 
 def test_engine_completes_a_cycle(monkeypatch):
     script = ScriptedBattery()
+
     # model: discharge by 10 until low, then user plugs in and it charges up
     def advance():
         if script.pct <= script.low_pct:

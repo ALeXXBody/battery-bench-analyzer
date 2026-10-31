@@ -41,7 +41,7 @@ class _UpdateBridge(QObject):
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("VoltClinic")
+        self.setWindowTitle("Battery Bench Analyzer")
         self.resize(1100, 720)
         icon_path = resource_path("icon.ico")
         if os.path.exists(icon_path):
@@ -61,7 +61,7 @@ class MainWindow(QWidget):
         side.setContentsMargins(0, 0, 0, 0)
         side.setSpacing(0)
 
-        title = QLabel("VoltClinic")
+        title = QLabel("Battery Bench Analyzer")
         title.setObjectName("appTitle")
         side.addWidget(title)
 
@@ -134,7 +134,7 @@ class MainWindow(QWidget):
     def trigger_update_check(self, silent: bool = False) -> None:
         from ..updater import check_in_background
 
-        self._update_test = os.environ.get("BATTERYCLINIC_SELFTEST") == "update"
+        self._update_test = os.environ.get("BATTERYBENCH_SELFTEST") == "update"
         self._update_silent = silent
         self.update_btn.setEnabled(False)
         if not silent:
@@ -178,14 +178,16 @@ class MainWindow(QWidget):
         if result.error:
             if not self._update_silent:
                 QMessageBox.information(
-                    self, "VoltClinic", f"Could not check for updates: {result.error}"
+                    self,
+                    "Battery Bench Analyzer",
+                    f"Could not check for updates: {result.error}",
                 )
             return
         if not result.update or not result.is_newer:
             if not self._update_silent:
                 QMessageBox.information(
                     self,
-                    "VoltClinic",
+                    "Battery Bench Analyzer",
                     f"You're on the latest version (v{__version__}).",
                 )
             return
@@ -194,8 +196,8 @@ class MainWindow(QWidget):
         if not info.installers:
             QMessageBox.information(
                 self,
-                "VoltClinic",
-                f"VoltClinic {info.latest_version} is available.\n"
+                "Battery Bench Analyzer",
+                f"Battery Bench Analyzer {info.latest_version} is available.\n"
                 f"Open {info.release_url} to download it.",
             )
             return
@@ -203,7 +205,7 @@ class MainWindow(QWidget):
         ret = QMessageBox.question(
             self,
             "Update available",
-            f"VoltClinic {info.latest_version} is available "
+            f"Battery Bench Analyzer {info.latest_version} is available "
             f"(you have v{__version__}).\n\n"
             f"Download and run the installer now?",
         )
@@ -250,7 +252,7 @@ class MainWindow(QWidget):
                 self,
                 "Updater",
                 "Downloaded. The installer has been launched.\n\n"
-                "VoltClinic will close and be replaced by the new version.",
+                "Battery Bench Analyzer will close and be replaced by the new version.",
             )
             self.close()
         else:

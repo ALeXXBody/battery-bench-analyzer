@@ -49,7 +49,7 @@ class UnlockPage(QWidget):
         lay.addWidget(title)
 
         notice = QLabel(
-            "VoltClinic provides READ-ONLY access to the bench battery's "
+            "Battery Bench Analyzer provides READ-ONLY access to the bench battery's "
             "fuel gauge, plus an opt-in write interface. It deliberately does "
             "NOT bundle vendor 'unlock' routines, chip reflashing, or cycle "
             "wiping — those are counterfeit/unsafe on worn-out packs. "
@@ -305,7 +305,7 @@ class UnlockPage(QWidget):
         self.output.setPlainText(
             f"{before}\n\nCleared: {', '.join(cleared)}\n\n{after}\n\n"
             "Note: if the ALARM flags persist, this gauge family clears "
-            "them with a vendor-specific command — VoltClinic does not "
+            "them with a vendor-specific command — Battery Bench Analyzer does not "
             "ship vendor register maps on purpose."
         )
 
@@ -342,6 +342,6 @@ class UnlockPage(QWidget):
         QMessageBox.information(
             self,
             "Write access enabled",
-            "Write access enabled for this session. VoltClinic still ships no "
+            "Write access enabled — Battery Bench Analyzer still ships no "
             "vendor register map — you decide what (if anything) to write.",
         )

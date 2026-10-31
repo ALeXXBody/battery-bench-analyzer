@@ -1,4 +1,4 @@
-"""`python -m voltclinic` launches the GUI (falling back to CLI headless).
+"""`python -m benchanalyzer` launches the GUI (falling back to CLI headless).
 
 Prints are guarded because in a --windowed PyInstaller exe sys.stdout and
 sys.stderr are None.
@@ -21,8 +21,8 @@ def main() -> int:
 
         return gui_main()
     except Exception as exc:  # noqa: BLE001
-        _eprint(f"[voltclinic] GUI failed to start ({exc}).")
-        _eprint("Falling back to CLI. Use `python -m voltclinic.cli` for the CLI.")
+        _eprint(f"[benchanalyzer] GUI failed to start ({exc}).")
+        _eprint("Falling back to CLI. Use `python -m benchanalyzer.cli` for the CLI.")
         try:
             from .cli.__main__ import main as cli_main
 

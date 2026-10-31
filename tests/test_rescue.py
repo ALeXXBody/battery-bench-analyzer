@@ -1,6 +1,7 @@
 """Tests for the dead-battery rescue flow (fake bus only)."""
-from voltclinic.core.bench import FakeGaugeBus
-from voltclinic.core.rescue import rescue, decode_word_flags
+
+from benchanalyzer.core.bench import FakeGaugeBus
+from benchanalyzer.core.rescue import decode_word_flags, rescue
 
 
 def test_rescue_locates_demo_gauge():
@@ -10,6 +11,6 @@ def test_rescue_locates_demo_gauge():
 
 
 def test_bit_decoder_names_active_bits():
-    raw = bytes([0b00000010, 0x00])     # SOV (bit1) set
+    raw = bytes([0b00000010, 0x00])  # SOV (bit1) set
     s = decode_word_flags(raw)
     assert "SOV" in s

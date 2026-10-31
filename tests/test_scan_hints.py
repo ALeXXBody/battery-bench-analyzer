@@ -1,5 +1,6 @@
 """Tests for the detailed scan hint table."""
-from voltclinic.core.sbs import describe_scan
+
+from benchanalyzer.core.sbs import describe_scan
 
 
 def test_all_nak_reads_like_gaue_off():

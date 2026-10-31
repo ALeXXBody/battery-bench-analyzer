@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 # Smart Battery Data (SBS) v1.1 register addresses - public spec.
-# NOTE: these MUST match voltclinic.core.sbs (kept in sync by tests).
+# NOTE: these MUST match benchanalyzer.core.sbs (kept in sync by tests).
 SB_MANUFACTURER_ACCESS = 0x00
 SB_BATTERY_MODE = 0x03
 SB_TEMPERATURE = 0x08

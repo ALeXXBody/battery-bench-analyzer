@@ -1,7 +1,12 @@
 """Tests for the tabbed info readouts (register dump / full readout)."""
-from voltclinic.core.bench import FakeGaugeBus
-from voltclinic.core.sbs import (SBSGauge, decode_manufacture_date_word,
-                                 decode_spec_info, fmt_word_value)
+
+from benchanalyzer.core.bench import FakeGaugeBus
+from benchanalyzer.core.sbs import (
+    SBSGauge,
+    decode_manufacture_date_word,
+    decode_spec_info,
+    fmt_word_value,
+)
 
 
 def test_full_readout_names_registers():

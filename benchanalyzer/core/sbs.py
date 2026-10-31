@@ -2,7 +2,8 @@
 
 Implements the public Smart Battery Data Specification v1.1 register set
 (SBS Implementers Forum) on top of any ``SMbusBus`` transport - which is how
-VoltClinic talks to a battery on the bench: the pack's fuel gauge is wired to
+Battery Bench Analyzer talks to a battery on the bench: the pack's
+fuel gauge is wired to
 a CP2112 USB-SMBus adapter and addressed at the SBS default ``0x0B``.
 
 Register conventions (SBS v1.1):

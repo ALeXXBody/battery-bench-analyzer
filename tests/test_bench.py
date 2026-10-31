@@ -1,17 +1,18 @@
 """Tests for bench sessions and the guided calibration engine."""
+
 import threading
 import time
 
 import pytest
 
-from voltclinic.core.bench import (
+from benchanalyzer.core.bench import (
     BenchCalibration,
     FakeGaugeBus,
     GaugeSession,
     SessionHolder,
 )
-from voltclinic.core.sbs import SBSGauge
-from voltclinic.unlock.smbus import SMbusError
+from benchanalyzer.core.sbs import SBSGauge
+from benchanalyzer.unlock.smbus import SMbusError
 
 
 def test_session_open_demo():
@@ -62,10 +63,10 @@ def test_session_holder():
 
 
 def test_calibration_demo_runs_full_learn_cycle():
-    bus = FakeGaugeBus(soc=30.0, charge_rate_pct_s=150.0,
-                       discharge_rate_pct_s=200.0)
-    cal = BenchCalibration(SBSGauge(bus), power_control=bus.power,
-                           low_rsoc=10.0, poll_s=0.01)
+    bus = FakeGaugeBus(soc=30.0, charge_rate_pct_s=150.0, discharge_rate_pct_s=200.0)
+    cal = BenchCalibration(
+        SBSGauge(bus), power_control=bus.power, low_rsoc=10.0, poll_s=0.01
+    )
     seen = []
     r = cal.run(progress=lambda m, f: seen.append((m, f)))
     assert r.cancelled is False
@@ -84,10 +85,10 @@ def test_calibration_demo_runs_full_learn_cycle():
 
 
 def test_calibration_operator_mode_logs_instructions():
-    bus = FakeGaugeBus(soc=50.0, charge_rate_pct_s=150.0,
-                       discharge_rate_pct_s=200.0)
-    cal = BenchCalibration(SBSGauge(bus), power_control=None,
-                           low_rsoc=10.0, poll_s=0.01)
+    bus = FakeGaugeBus(soc=50.0, charge_rate_pct_s=150.0, discharge_rate_pct_s=200.0)
+    cal = BenchCalibration(
+        SBSGauge(bus), power_control=None, low_rsoc=10.0, poll_s=0.01
+    )
     instructions = []
 
     # Simulate the operator: follow the printed instructions.
@@ -117,10 +118,10 @@ def test_calibration_operator_mode_logs_instructions():
 
 def test_calibration_cancel():
     bus = FakeGaugeBus(soc=5.0, charge_rate_pct_s=1.0)
-    cal = BenchCalibration(SBSGauge(bus), power_control=bus.power,
-                           low_rsoc=10.0, poll_s=0.01)
-    t = threading.Thread(target=lambda: (time.sleep(0.05), cal.cancel()),
-                         daemon=True)
+    cal = BenchCalibration(
+        SBSGauge(bus), power_control=bus.power, low_rsoc=10.0, poll_s=0.01
+    )
+    t = threading.Thread(target=lambda: (time.sleep(0.05), cal.cancel()), daemon=True)
     t.start()
     r = cal.run(progress=lambda m, f: None)
     assert r.cancelled is True

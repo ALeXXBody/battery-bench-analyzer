@@ -228,7 +228,7 @@ def cmd_regen(args) -> int:
     batteries = reader.refresh()
     if not batteries:
         print("No internal batteries found to regenerate.")
-        print("(For a bench battery use: voltclinic calibrate --adapter ...)")
+        print("(For a bench battery use: benchanalyzer calibrate --adapter ...)")
         return 1
     engine = RegenerationEngine(
         reader, battery_index=args.index, max_cycles=args.cycles
@@ -251,7 +251,7 @@ def cmd_regen(args) -> int:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
-        prog="voltclinic",
+        prog="benchanalyzer",
         description="Bench battery analyzer: "
         "test, repair and calibrate pack gauges over SMBus.",
     )

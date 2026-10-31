@@ -1,26 +1,29 @@
 """Tests for the SMBus unlock hooks and guarded consent logic."""
+
 import pytest
 
-from voltclinic.unlock.smbus import (
-    ConsentRequired,
-    FakeSMbusBus,
-    FuelGaugeInterop,
+from benchanalyzer.unlock.smbus import (
     SB_CYCLE_COUNT,
     SB_DESIGN_CAPACITY,
     SB_DEVICE_NAME,
     SB_FULL_CHARGE_CAPACITY,
     SB_MANUFACTURER_NAME,
     SB_SERIAL_NUMBER,
+    ConsentRequired,
+    FakeSMbusBus,
+    FuelGaugeInterop,
 )
 
 
 def _demo_gauge() -> FuelGaugeInterop:
-    bus = FakeSMbusBus(regs={
-        SB_SERIAL_NUMBER: 0x1234,
-        SB_DESIGN_CAPACITY: 4200,
-        SB_FULL_CHARGE_CAPACITY: 3100,
-        SB_CYCLE_COUNT: 402,
-    })
+    bus = FakeSMbusBus(
+        regs={
+            SB_SERIAL_NUMBER: 0x1234,
+            SB_DESIGN_CAPACITY: 4200,
+            SB_FULL_CHARGE_CAPACITY: 3100,
+            SB_CYCLE_COUNT: 402,
+        }
+    )
     bus.blocks[SB_MANUFACTURER_NAME] = b"\x07" + b"TEST-CO"
     bus.blocks[SB_DEVICE_NAME] = b"\x08" + b"DEMO-PAK"
     return FuelGaugeInterop(bus)

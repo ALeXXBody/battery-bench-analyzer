@@ -2,14 +2,13 @@
 
 These verify the exact byte layouts documented in Silicon Labs AN495.
 """
-import pytest
 
-from voltclinic.unlock.cp2112 import (
+from benchanalyzer.unlock.cp2112 import (
     RID_DATA_READ_RESPONSE,
+    RID_DATA_WRITE_REQUEST,
     RID_SMBUS_CONFIG,
     RID_TRANSFER_STATUS_RESPONSE,
     RID_WRITE_READ_REQUEST,
-    RID_DATA_WRITE_REQUEST,
     block_to_blob,
     bytes_to_word,
     parse_read_response,
@@ -28,19 +27,19 @@ def test_smbus_config_default_layout():
     assert rep[0] == RID_SMBUS_CONFIG
     # clock speed big-endian at offset 1 -> 0x000186A0
     assert rep[1:5] == bytes.fromhex("000186A0")
-    assert rep[5] == 0x02          # device address
-    assert rep[6] == 0x01          # auto send read enabled
+    assert rep[5] == 0x02  # device address
+    assert rep[6] == 0x01  # auto send read enabled
     # read timeout 1000ms = 0x03E8 big-endian at offset 9
     assert rep[9:11] == bytes.fromhex("03E8")
 
 
 def test_write_read_request_word_read():
-    rep = report_write_read_request(0x0B, 2, b"\x0F")
+    rep = report_write_read_request(0x0B, 2, b"\x0f")
     assert rep[0] == RID_WRITE_READ_REQUEST
-    assert rep[1] == 0x16           # slave 0x0B << 1
+    assert rep[1] == 0x16  # slave 0x0B << 1
     assert rep[2:4] == bytes.fromhex("0002")  # length BE
-    assert rep[4] == 1              # target address length
-    assert rep[5] == 0x0F           # command byte
+    assert rep[4] == 1  # target address length
+    assert rep[5] == 0x0F  # command byte
     assert len(rep) == 64
 
 
@@ -48,7 +47,7 @@ def test_write_request_data_write():
     rep = report_write_request(0x0B, bytes([0x1C, 0x34, 0x12]))
     assert rep[0] == RID_DATA_WRITE_REQUEST
     assert rep[1] == 0x16
-    assert rep[2] == 3              # data length
+    assert rep[2] == 3  # data length
     assert rep[3:6] == bytes([0x1C, 0x34, 0x12])
 
 
