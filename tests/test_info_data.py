@@ -36,8 +36,21 @@ def test_register_dump_voltage_line():
     row = next(r for r in g.register_dump() if r[0] == "0x09")
     _reg, _name, _type, unit, text = row
     assert unit == "mV"
-    assert text.endswith("V") is False and "mV" not in text  # raw word render
-    assert "000" in text or text.isdigit()
+    assert text.startswith("11160 mV") and "11.160 V" in text  # decoded + raw
+
+
+def test_word_value_human_readable():
+    # every plain number register now carries its unit in the text
+    assert fmt_word_value(0x0B, 62) == "62 %"
+    assert fmt_word_value(0x0E, 3100).endswith("mAh")
+    assert fmt_word_value(0x15, 402) == "402 cycles"
+    assert fmt_word_value(0x07, 1).startswith("yes")
+    # time registers translate 0xFFFF and minutes
+    assert fmt_word_value(0x10, 0xFFFF) == "unavailable (0xFFFF)"
+    assert "1h05" in fmt_word_value(0x0F, 65)
+    # BatteryMode decodes definable bits with raw hex retained
+    assert "primary_battery" in fmt_word_value(0x03, 0x0800)
+    assert "0x0000" in fmt_word_value(0x03, 0)
 
 
 def test_word_value_formatting():

@@ -188,8 +188,32 @@ def fmt_word_value(reg: int, raw: int) -> str:
         return "unavailable (0xFFFF)"
     if reg == 0x08:
         return f"{raw_temp_to_celsius(raw):.1f} °C (raw {raw})"
-    if reg in (0x0A,):  # signed current
+    if reg == 0x0A:  # signed current
         return f"{to_signed16(raw):+d} mA"
+    if reg == 0x04:  # AtRate: signed current/capacity request
+        return f"{to_signed16(raw):+d}"
+    if reg == 0x09:
+        return f"{raw} mV ({raw / 1000:.3f} V)"
+    if reg == 0x17:
+        return f"{raw} mV ({raw / 1000:.2f} V)"
+    if reg == 0x13:
+        return f"{raw} mV charging voltage limit"
+    if reg == 0x12:
+        return f"{raw} mA charging current max"
+    if reg == 0x01:
+        return f"{raw} mAh alarm threshold"
+    if reg == 0x02:
+        return f"{raw} min alarm threshold"
+    if reg in (0x0B, 0x0C):
+        return f"{raw} %"
+    if reg in (0x0D, 0x0E, 0x16):
+        return f"{raw} mAh"
+    if reg in (0x0F, 0x10, 0x11, 0x05, 0x06):  # minutes helpers
+        return _fmt_minutes(raw)
+    if reg == 0x07:  # AtRateOK is a plain boolean
+        return "yes (OK)" if raw else "no (0)"
+    if reg == 0x15:
+        return f"{raw} cycles"
     if reg == 0x18:
         return decode_spec_info(raw)
     if reg == 0x19:
@@ -197,10 +221,38 @@ def fmt_word_value(reg: int, raw: int) -> str:
     if reg == 0x1A:
         return decode_serial(raw)
     if reg == 0x14:
-        return f"0x{raw:04X} ({', '.join(decode_status(raw)).lower() or 'idle'})"
-    if reg in (0x03, 0x04):  # mode / AtRate signed
-        return f"0x{raw:04X}" if reg == 0x03 else f"{to_signed16(raw):+d} "
-    return f"{raw:d}"
+        flags = ", ".join(decode_status(raw)).lower() or "idle"
+        return f"{flags} (0x{raw:04X})"
+    if reg == 0x03:
+        return decode_battery_mode(raw)
+    return f"{raw:d} (raw)"
+
+
+def _fmt_minutes(raw: int) -> str:
+    """SBS time values: 0xFFFF means the gauge cannot predict."""
+    if raw == 0xFFFF:
+        return "unavailable"
+    if raw >= 60:
+        return f"{raw} min ({raw // 60}h{raw % 60:02d})"
+    return f"{raw} min"
+
+
+def decode_battery_mode(raw: int) -> str:
+    """BatteryMode(): the few defined SBS mode bits, decoded for operators."""
+    bits = []
+    if raw & 0x0001:
+        bits.append("internal_charge_controller")
+    if raw & 0x0002:
+        bits.append("primary_battery_support")
+    if raw & 0x0040:
+        bits.append("condition_cycle_requested")
+    if raw & 0x0080:
+        bits.append("condition_flag")
+    if raw & 0x0400:
+        bits.append("charge_controller_enabled")
+    if raw & 0x0800:
+        bits.append("primary_battery")
+    return f"0x{raw:04X} ({', '.join(bits).lower() or 'no mode bits set'})"
 
 
 class SBSGauge:
