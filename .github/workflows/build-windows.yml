@@ -1,4 +1,4 @@
-name: Build Windows EXE + Installer
+name: Build Battery Bench Analyzer (Windows / Linux / macOS)
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +50,7 @@ jobs:
       - name: Build Inno Setup installer
         shell: pwsh
         run: |
-          $version = "0.2.0"
+          $version = "1.0.0"
           if ($env:GITHUB_REF -match '^refs/tags/v(.+)$') { $version = $Matches[1] }
           if (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe") {
             & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DVersion=$version" installer\BatteryBenchAnalyzer.iss
@@ -74,3 +74,161 @@ jobs:
         with:
           files: |
             dist/BatteryBenchAnalyzer-*-setup.exe
+
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system libraries (Qt runtime needs)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libfontconfig1 libxkbcommon0 libxkbcommon-x11-0 libdbus-1-3 dpkg-dev
+          sudo apt-get install -y "libxcb-cursor0" || true
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt pyinstaller pytest
+
+      - name: Run tests
+        run: python -m pytest tests/ -q
+
+      - name: Resolve version
+        run: |
+          v="1.0.0"
+          if [[ "${GITHUB_REF}" =~ ^refs/tags/v(.+)$ ]]; then v="${BASH_REMATCH[1]}"; fi
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+
+      - name: Build onedir app
+        run: |
+          python -m PyInstaller --noconfirm --clean --onedir --windowed \
+            --name BatteryBenchAnalyzer \
+            --add-data "assets/icon.ico:benchanalyzer" run.py
+
+      - name: Headless selftest (offscreen)
+        env:
+          BATTERYBENCH_SELFTEST: '1'
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          timeout 60 ./dist/BatteryBenchAnalyzer/BatteryBenchAnalyzer || true
+          if [ ! -f selftest_ok.txt ]; then
+            echo "selftest_ok.txt not written - app failed to start"
+            exit 1
+          fi
+          cat selftest_ok.txt
+
+      - name: Portable tar.gz
+        run: |
+          cd dist
+          tar -czf "BatteryBenchAnalyzer-${VERSION}-linux-x86_64.tar.gz" BatteryBenchAnalyzer
+
+      - name: Debian package (.deb)
+        run: |
+          rm -rf pkgroot && mkdir -p pkgroot/DEBIAN pkgroot/opt/BatteryBenchAnalyzer pkgroot/usr/bin pkgroot/usr/share/applications
+          cp -r dist/BatteryBenchAnalyzer/. pkgroot/opt/BatteryBenchAnalyzer/
+          ln -s /opt/BatteryBenchAnalyzer/BatteryBenchAnalyzer pkgroot/usr/bin/battery-bench-analyzer
+          cat > pkgroot/DEBIAN/control << CTRL
+          Package: battery-bench-analyzer
+          Version: ${VERSION}
+          Section: electronics
+          Priority: optional
+          Architecture: amd64
+          Maintainer: ALeXXBody
+          Description: Battery Bench Analyzer
+           Bench test, repair and calibrate laptop battery packs via a
+           USB-SMBus adapter (CP2112 / MCP2221A). Includes a guided learn
+           cycle, rescue flow for dead packs, register diagnostics and
+           consent-gated gauge writes.
+          CTRL
+          dpkg-deb --build --root-owner-group pkgroot "BatteryBenchAnalyzer-${VERSION}-linux-amd64.deb"
+          mkdir -p dist-deb && mv "BatteryBenchAnalyzer-${VERSION}-linux-amd64.deb" dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: BatteryBenchAnalyzer-linux
+          path: |
+            dist/BatteryBenchAnalyzer-*-linux-x86_64.tar.gz
+            dist/BatteryBenchAnalyzer-*-linux-amd64.deb
+
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/BatteryBenchAnalyzer-*-linux-x86_64.tar.gz
+            dist/BatteryBenchAnalyzer-*-linux-amd64.deb
+
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt pyinstaller pytest hidapi
+
+      - name: Run tests
+        run: python -m pytest tests/ -q
+
+      - name: Resolve version
+        run: |
+          v="1.0.0"
+          if [[ "${GITHUB_REF}" =~ ^refs/tags/v(.+)$ ]]; then v="${BASH_REMATCH[1]}"; fi
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+
+      - name: Build .app bundle
+        run: |
+          python -m PyInstaller --noconfirm --clean --onedir --windowed \
+            --name BatteryBenchAnalyzer run.py
+
+      - name: Headless selftest (offscreen)
+        env:
+          BATTERYBENCH_SELFTEST: '1'
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ./dist/BatteryBenchAnalyzer/BatteryBenchAnalyzer.app/Contents/MacOS/BatteryBenchAnalyzer &
+          APP_PID=$!
+          for i in $(seq 1 60); do
+            if [ -f selftest_ok.txt ]; then break; fi
+            sleep 1
+            if ! kill -0 $APP_PID 2>/dev/null; then break; fi
+          done
+          kill $APP_PID 2>/dev/null || true
+          if [ ! -f selftest_ok.txt ]; then
+            echo "selftest_ok.txt not written - app failed to start"
+            exit 1
+          fi
+          cat selftest_ok.txt
+
+      - name: Ad-hoc code signature (arm64 apps must at least be signed)
+        run: |
+          codesign --force --deep --sign - dist/BatteryBenchAnalyzer/BatteryBenchAnalyzer.app
+
+      - name: Build .dmg
+        run: |
+          mkdir -p dmgstage
+          cp -R dist/BatteryBenchAnalyzer/BatteryBenchAnalyzer.app dmgstage/
+          hdiutil create -volname "Battery Bench Analyzer" -srcfolder dmgstage -ov -format UDZO "BatteryBenchAnalyzer-${VERSION}-macos.dmg"
+          mv BatteryBenchAnalyzer-*.dmg dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: BatteryBenchAnalyzer-macos
+          path: dist/BatteryBenchAnalyzer-*-macos.dmg
+
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/BatteryBenchAnalyzer-*-macos.dmg

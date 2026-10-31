@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "benchanalyzer"
-version = "0.9.0"
-description = "Analyze, regenerate and (optionally) interop with laptop batteries on Windows."
+version = "1.0.0"
+description = "Bench test, repair and calibrate laptop battery packs (Windows, Linux, macOS)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }

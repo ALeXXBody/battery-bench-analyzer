@@ -100,6 +100,43 @@ assets/       App icon (SVG source + generated .ico/.png)
 installer/    Inno Setup script that produces the Windows installer
 ```
 
+
+## Install by platform
+
+| Platform | File | How to install |
+| :------- | :--- | :------------- |
+| **Windows** | `BatteryBenchAnalyzer-x.y.z-setup.exe` | Run the installer (Inno Setup). The app auto-updates from GitHub Releases. |
+| **Linux** | `BatteryBenchAnalyzer-x.y.z-linux-x86_64.tar.gz` | `tar -xzf BatteryBenchAnalyzer-*.tar.gz` and run `./BatteryBenchAnalyzer/BatteryBenchAnalyzer`. |
+| **Linux (Debian/Ubuntu)** | `BatteryBenchAnalyzer-x.y.z-linux-amd64.deb` | `sudo apt install ./BatteryBenchAnalyzer-*.deb` — adds a `battery-bench-analyzer` command and menu entry. |
+| **macOS (Apple Silicon)** | `BatteryBenchAnalyzer-x.y.z-macos.dmg` | Open the DMG and drag the app to Applications. The app is **ad-hoc signed, not notarized**: on first launch use *right-click → Open* (or `xattr -cr /Applications/BatteryBenchAnalyzer.app`) to pass Gatekeeper. |
+
+### Linux udev permission
+
+Raw HID access to the CP2112 / MCP2221A needs read/write on `/dev/hidraw*`.
+That already works if you are in the `plugdev` group; otherwise install a
+udev rule (as root):
+
+    # /etc/udev/rules.d/99-batterybench.rules
+    SUBSYSTEM=="hidraw", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea90", MODE="0660", GROUP="plugdev"
+    SUBSYSTEM=="hidraw", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="00dd", MODE="0660", GROUP="plugdev"
+
+then `sudo udevadm control --reload-rules`, replug the adapter, and
+(optionally) unbind a conflicting kernel driver if the adapter refuses
+raw access:
+
+    echo 10C4:EA90 | sudo tee /sys/bus/hid/drivers/hid-generic ... # see docs below
+
+If your distro auto-attaches the `hid-cp2112` kernel driver and SMBus reads
+misbehave from hidraw, `sudo modprobe -r cp2112` (or blacklist it) frees the
+device for userspace access.
+
+### macOS notes
+
+- Tested on Apple Silicon (M1/M2). The build bundles PySide6, so no extra
+  runtime is needed.
+- Auto-update is Windows-only for now; on macOS/Linux update by downloading
+  a newer release asset manually.
+
 ## License
 
 MIT — see [LICENSE](LICENSE). This project is original work and intentionally

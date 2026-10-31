@@ -180,17 +180,10 @@ class McpLink:
     def _open(device=None, path: str | None = None):
         if device is not None:
             return device._api, device._handle, device
-        import platform as _p
-
-        if _p.system() != "Windows":  # pragma: no cover - Linux/dev only
-            raise SMbusError(
-                "MCP2221A currently requires Windows (HID API, like the "
-                "CP2112 path); Linux support would use hidraw."
-            )
         try:
-            from .cp2112 import HidApi
+            from .cp2112 import make_hid_api
 
-            api = HidApi()
+            api = make_hid_api()
         except Exception as e:
             raise SMbusError(str(e)) from e
         seen = api.enumerate_hid_paths()
@@ -218,6 +211,13 @@ class McpLink:
     # -- transfer primitives --
 
     def write_report(self, payload: bytes) -> None:
+        import platform as _p
+
+        if _p.system() == "Linux":
+            # hidraw: the MCP2221 descriptor uses no report IDs, so the
+            # raw payload goes straight onto the wire (no id slot).
+            self._api.write_file(self._handle, pad64(payload))
+            return
         buffer = bytes([0x00]) + pad64(payload)
         try:
             self._api.write_file(self._handle, buffer)
@@ -231,10 +231,11 @@ class McpLink:
 
     def transfer(self, payload: bytes) -> bytes:
         """Send one command report and return the (id-stripped) response."""
+
         for _ in (0, 1):
             self.write_report(payload)
             raw = self.read_report()
-            resp = raw[1:] if raw and raw[0] == 0x00 else raw
+            resp = raw[1:] if raw and raw[0] == 0x00 and len(raw) > 64 else raw
             if resp and resp[0] == payload[0]:
                 return resp
             self._diag(
@@ -429,15 +430,11 @@ class Mcp2221Smbus(SMbusBus):
 
 
 def list_mcp_adapters() -> list[str]:
-    """HID device paths of connected MCP2221A adapters (Windows)."""
+    """HID device paths of connected MCP2221A adapters (Windows/Linux/macOS)."""
     try:
-        import platform as _p
+        from .cp2112 import make_hid_api
 
-        if _p.system() != "Windows":  # pragma: no cover - Linux/dev only
-            return []
-        from .cp2112 import HidApi
-
-        api = HidApi()
+        api = make_hid_api()
     except Exception:  # noqa: BLE001
         return []
     return [

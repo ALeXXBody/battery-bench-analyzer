@@ -71,6 +71,14 @@ class HelpPage(QWidget):
                 "families.",
             ),
             (
+                "Other platforms",
+                "Windows uses the setup.exe. On Linux run the portable "
+                "tar.gz or the .deb; adapter access needs a udev rule "
+                "(see README). On macOS open the DMG — the app is "
+                "ad-hoc signed, so use right-click → Open on first "
+                "launch.",
+            ),
+            (
                 "Logs",
                 "Diagnostics land in %LOCALAPPDATA%\\BatteryBenchAnalyzer\\diag.log "
                 "(Windows) or ~/.benchanalyzer/diag.log (Linux/macOS) — include "

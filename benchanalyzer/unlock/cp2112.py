@@ -431,6 +431,181 @@ class HidApi:
 
 
 # ---------------------------------------------------------------------------
+# Part B2 - cross-platform HID backends (Linux hidraw / macOS hidapi)
+# ---------------------------------------------------------------------------
+
+
+class _LinuxHidApi:
+    """Linux backend: raw hidraw access via /dev/hidrawN.
+
+    Enumerates via the sysfs class; the interesting ioctl numbers below
+    mirror the public hi rw uapi (HIDIOCSFEATURE / HIDIOCGFEATURE).
+    """
+
+    def __init__(self):
+        import glob  # noqa: F401 - used in enumerate only
+        import os
+
+        self._os = os
+        self._glob = glob
+
+    @staticmethod
+    def _ioctl_number(nr, size):
+        # HIDIOCSFEATURE(0x06) / HIDIOCGFEATURE(0x07) in linux/hidrw. h:
+        # _IOWR('H', nr, size) = READ(2) | WRITE(1) dir << 30
+        return (3 << 30) | (size << 16) | (0x48 << 8) | nr
+
+    def enumerate_hid_paths(self) -> list[tuple]:
+        result: list[tuple] = []
+        for sysdir in sorted(self._glob.glob("/sys/class/hidraw/hidraw*")):
+            try:
+                with open(
+                    self._os.path.join(sysdir, "device", "uevent"),
+                    encoding="ascii",
+                ) as f:
+                    ids = parse_linux_hid_id(f.read())
+            except OSError:
+                continue
+            if ids:
+                name = self._os.path.basename(sysdir)
+                result.append((f"/dev/{name}", ids[0], ids[1]))
+        return result
+
+    def open_device(self, path: str, vid: int, pid: int) -> HidDevice:
+        fd = self._os.open(path, self._os.O_RDWR | self._os.O_CLOEXEC)
+        if fd < 0:
+            raise HidException(f"failed to open hidraw device: {path}")
+        return HidDevice(
+            self, fd, vid, pid, path, in_len=REPORT_LEN, feat_len=REPORT_LEN
+        )
+
+    def _ensure_handle(self, handle):
+        if isinstance(handle, int):
+            return handle
+        return (
+            handle.fileno()
+            if hasattr(handle, "fileno")
+            else getattr(handle, "_handle", 0)
+        )
+
+    def write_file(self, handle, report: bytes) -> None:
+        buf = bytearray(len(report))
+        buf[:] = report
+        try:
+            self._os.write(int(handle), bytes(buf))
+        except BlockingIOError:
+            pass
+
+    def read_file(self, handle, size: int, timeout_ms: int) -> bytes:
+        import select
+
+        fd = int(handle)
+        r, _, _ = select.select([fd], [], [], max(0.0, timeout_ms / 1000.0))
+        if not r:
+            raise HidException(f"HID read timed out after {timeout_ms} ms")
+        return bytes(self._os.read(fd, size))
+
+    def set_feature(self, handle, report: bytes) -> None:
+        fd = int(handle)
+        buf = bytes(report)
+        req = self._ioctl_number(0x06, len(buf))
+        import fcntl
+
+        fcntl.ioctl(fd, req, buf, True)
+
+    def get_feature(self, handle, report_id: int, report_len: int) -> bytes:
+        fd = int(handle)
+        buf = bytearray(report_len)
+        buf[0] = report_id
+        req = self._ioctl_number(0x07, report_len)
+        import fcntl
+
+        fcntl.ioctl(fd, req, bytes(buf), True)
+        return bytes(buf)
+
+    def close(self, handle) -> None:
+        fd = getattr(handle, "_handle", None)
+        try:
+            self._os.close(int(fd))
+        except (OSError, TypeError):
+            pass
+
+
+def parse_linux_hid_id(uevent: str) -> tuple[int, int]:
+    """Extract (vendor, product) from a Linux HID uevent's HID_ID line."""
+    for line in uevent.splitlines():
+        if line.startswith("HID_ID="):
+            _, v, i = line[7:].split(":")
+            return int(v, 16), int(i, 16)
+    return (0, 0)
+
+
+class _MacHidApi:
+    """macOS/backend via the `hidapi` pip package (module name: `hid`)."""
+
+    def __init__(self):
+        try:
+            import hid  # type: ignore[import-not-found]
+        except ImportError as exc:  # pragma: no cover
+            raise HidException(
+                "macOS HID support needs the 'hidapi' package: pip install hidapi"
+            ) from exc
+        self._hid = hid
+
+    def enumerate_hid_paths(self) -> list[tuple]:
+        result: list[tuple] = []
+        for dev in self._hid.enumerate(0, 0):
+            path = dev.get("path")
+            if path:
+                result.append((path, dev.get("vendor_id", 0), dev.get("product_id", 0)))
+        return result
+
+    def open_device(self, path: str, vid: int, pid: int) -> HidDevice:
+        h = self._hid.device()
+        h.open_path(path)
+        return HidDevice(
+            self, h, vid, pid, path, in_len=REPORT_LEN, feat_len=REPORT_LEN
+        )
+
+    def write_file(self, handle, report: bytes) -> None:
+        handle.write(list(bytes(report)))
+
+    def read_file(self, handle, size: int, timeout_ms: int) -> bytes:
+        data = handle.read(size, timeout_ms)
+        return bytes(bytearray(data or []))
+
+    def set_feature(self, handle, report: bytes) -> None:
+        handle.send_feature_report(list(bytes(report)))
+
+    def get_feature(self, handle, report_id: int, report_len: int) -> bytes:
+        data = handle.get_feature_report(report_id, report_len)
+        return bytes(bytearray(data or []))
+
+    def close(self, handle) -> None:
+        try:
+            handle.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def make_hid_api():
+    """Return the HID backend for this OS (Windows / Linux / macOS)."""
+    system = platform.system()
+    if system == "Windows":  # pragma: no cover - Windows CI covers the rest
+        try:
+            return HidApi()
+        except HidException as e:
+            raise SMbusError(str(e)) from e
+    if system == "Linux":
+        return _LinuxHidApi()
+    if system == "Darwin":
+        return _MacHidApi()
+    raise SMbusError(f"HID adapters are unsupported on {system}")
+
+
+const_marker = None
+
+# ---------------------------------------------------------------------------
 # Part C - CP2112 SMBus driver
 # ---------------------------------------------------------------------------
 
@@ -480,25 +655,15 @@ class Cp2112Smbus(SMbusBus):
             pass
 
     @staticmethod
-    def _api() -> HidApi:
-        if platform.system() != "Windows":  # pragma: no cover - Linux/dev only
-            raise SMbusError(
-                "CP2112 requires Windows (HID API). On Linux use the hidraw "
-                "kernel interface; build the adapter on a Windows host."
-            )
-        try:
-            return HidApi()
-        except HidException as e:
-            raise SMbusError(str(e)) from e
+    def _api():
+        return make_hid_api()
 
     @staticmethod
     def find_adapters() -> list[tuple]:
         """Return [(path, vid, pid), ...] for connected CP2112 adapters."""
-        if platform.system() != "Windows":  # pragma: no cover
-            return []
         try:
-            api = HidApi()
-        except HidException:  # pragma: no cover
+            api = make_hid_api()
+        except Exception:  # noqa: BLE001 - detection must never raise
             return []
         adapters = [
             (p, v, i)

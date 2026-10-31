@@ -23,25 +23,21 @@ def label_for(adapter: str) -> str:
 
 def detect_adapters() -> list[str]:
     """Return adapter keys currently connected via USB, priority order."""
-    import platform
-
-    system = platform.system()
-
     found: list[str] = []
 
-    if system == "Windows":
-        # HID-based adapters (CP2112, MCP2221A): enumerate by exact VID:PID.
-        try:
-            from .cp2112 import CP2112_PID, CP2112_VID, HidApi
+    # HID-based adapters (CP2112, MCP2221A): enumerate by exact VID:PID on
+    # every OS (Windows ctypes / Linux hidraw / macOS hidapi).
+    try:
+        from .cp2112 import CP2112_PID, CP2112_VID, make_hid_api
 
-            api = HidApi()
-            have = {(v, i) for (_, v, i) in api.enumerate_hid_paths()}
-            if (CP2112_VID, CP2112_PID) in have:
-                found.append("cp2112")
-            if (0x04D8, 0x00DD) in have:
-                found.append("mcp2221")
-        except Exception:  # noqa: BLE001 - detection must never crash the UI
-            pass
+        api = make_hid_api()
+        have = {(v, i) for (_, v, i) in api.enumerate_hid_paths()}
+        if (CP2112_VID, CP2112_PID) in have:
+            found.append("cp2112")
+        if (0x04D8, 0x00DD) in have:
+            found.append("mcp2221")
+    except Exception:  # noqa: BLE001 - detection must never crash the UI
+        pass
 
     # Serial-bridge adapters work on every platform via pyserial.
     try:
