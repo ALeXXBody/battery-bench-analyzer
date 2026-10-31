@@ -38,6 +38,8 @@ jobs:
           BATTERYBENCH_SELFTEST: '1'
           QT_QPA_PLATFORM: offscreen
         run: |
+          if (Test-Path selftest_ok.txt) { Remove-Item selftest_ok.txt -Force }
+          if (Test-Path dist\selftest_ok.txt) { Remove-Item dist\selftest_ok.txt -Force }
           $job = Start-Process -FilePath "dist\BatteryBenchAnalyzer\BatteryBenchAnalyzer.exe" -PassThru
           Wait-Process -Id $job.Id -Timeout 60 -ErrorAction SilentlyContinue
           if (Test-Path selftest_ok.txt) {
@@ -114,6 +116,7 @@ jobs:
           BATTERYBENCH_SELFTEST: '1'
           QT_QPA_PLATFORM: offscreen
         run: |
+          rm -f selftest_ok.txt dist/selftest_ok.txt
           timeout 60 ./dist/BatteryBenchAnalyzer/BatteryBenchAnalyzer || true
           if [ ! -f selftest_ok.txt ]; then
             echo "selftest_ok.txt not written - app failed to start"
@@ -195,7 +198,13 @@ jobs:
           BATTERYBENCH_SELFTEST: '1'
           QT_QPA_PLATFORM: offscreen
         run: |
-          ./dist/BatteryBenchAnalyzer/BatteryBenchAnalyzer.app/Contents/MacOS/BatteryBenchAnalyzer &
+          rm -f selftest_ok.txt dist/selftest_ok.txt
+          BIN=$(find dist -name BatteryBenchAnalyzer -path "*.app/Contents/MacOS/*" 2>/dev/null | head -1)
+          if [ -z "$BIN" ]; then
+            echo "no .app bundle found under dist/"; ls -la dist; exit 1
+          fi
+          echo "found binary: $BIN"
+          "$BIN" &
           APP_PID=$!
           for i in $(seq 1 60); do
             if [ -f selftest_ok.txt ]; then break; fi
@@ -211,12 +220,17 @@ jobs:
 
       - name: Ad-hoc code signature (arm64 apps must at least be signed)
         run: |
-          codesign --force --deep --sign - dist/BatteryBenchAnalyzer/BatteryBenchAnalyzer.app
+          BIN=$(find dist -name BatteryBenchAnalyzer -path "*.app/Contents/MacOS/*" | head -1)
+          APPDIR=$(dirname "$(dirname "$(dirname "$BIN")")")
+          codesign --force --deep --sign - "$APPDIR"
+          echo "signed: $APPDIR"
 
       - name: Build .dmg
         run: |
-          mkdir -p dmgstage
-          cp -R dist/BatteryBenchAnalyzer/BatteryBenchAnalyzer.app dmgstage/
+          BIN=$(find dist -name BatteryBenchAnalyzer -path "*.app/Contents/MacOS/*" | head -1)
+          APPDIR=$(dirname "$(dirname "$(dirname "$BIN")")")
+          rm -rf dmgstage && mkdir -p dmgstage
+          cp -R "$APPDIR" dmgstage/
           hdiutil create -volname "Battery Bench Analyzer" -srcfolder dmgstage -ov -format UDZO "BatteryBenchAnalyzer-${VERSION}-macos.dmg"
           mv BatteryBenchAnalyzer-*.dmg dist/
 
