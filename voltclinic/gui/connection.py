@@ -12,13 +12,13 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from ..core.bench import GaugeSession
+from ..core.sbs import DEFAULT_GAUGE_ADDR
 from ..unlock.smbus import SMbusError
 
 
@@ -45,11 +45,6 @@ class ConnectionBar(QWidget):
         self.adapter_box.addItem("MCP2221A USB-SMBus adapter")
         self.adapter_box.addItem("ROTOOL USB analyzer")
         row.addWidget(self.adapter_box)
-
-        row.addWidget(QLabel("Address:"))
-        self.addr_edit = QLineEdit("0x0B")
-        self.addr_edit.setFixedWidth(64)
-        row.addWidget(self.addr_edit)
 
         self.connect_btn = QPushButton("Connect")
         self.connect_btn.setObjectName("primary")
@@ -140,16 +135,9 @@ class ConnectionBar(QWidget):
         names = ("cp2112", "mcp2221", "rotool")
         return names[idx if 0 <= idx < len(names) else 0]
 
-    def selected_addr(self) -> int:
-        try:
-            return int(self.addr_edit.text().strip(), 16)
-        except ValueError:
-            return 0x0B
-
     def set_busy(self, busy: bool) -> None:
         for w in (
             self.adapter_box,
-            self.addr_edit,
             self.connect_btn,
             self.disconnect_btn,
             self.scan_btn,
@@ -165,7 +153,6 @@ class ConnectionBar(QWidget):
         self.connect_btn.setEnabled(not on)
         self.disconnect_btn.setEnabled(on)
         self.adapter_box.setEnabled(not on)
-        self.addr_edit.setEnabled(not on)
         self.demo_btn.setEnabled(not on)
         if on:
             self._hide_detail()
@@ -232,7 +219,7 @@ class ConnectionBar(QWidget):
         from ..core.diaglog import log as diag
 
         adapter = self.selected_adapter()
-        addr = self.selected_addr()
+        addr = DEFAULT_GAUGE_ADDR
         diag(f"connect bar: adapter={adapter} addr=0x{addr:02X}")
         try:
             session = GaugeSession.open(adapter, addr)
@@ -270,7 +257,6 @@ class ConnectionBar(QWidget):
             return
         found = session.scan()
         if found is not None:
-            self.addr_edit.setText(f"0x{found:02X}")
             self._hide_detail()
             self.status.setText(f"Scan: gauge answered at 0x{found:02X}")
             return

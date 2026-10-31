@@ -18,6 +18,12 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.bench import SessionHolder
+from ...core.sbs import (
+    SBS_BATTERY_STATUS,
+    SBS_REMAINING_CAPACITY_ALARM,
+    SBS_REMAINING_TIME_ALARM,
+    decode_status,
+)
 from ...unlock.smbus import (
     ConsentRequired,
     FuelGaugeInterop,
@@ -32,6 +38,7 @@ class UnlockPage(QWidget):
         self.setObjectName("content")
         self.bench = bench
         self.gauge: FuelGaugeInterop | None = None
+        self._writes_enabled = False
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(24, 24, 24, 24)
@@ -67,6 +74,28 @@ class UnlockPage(QWidget):
         btn_row.addStretch(1)
         d.addLayout(btn_row)
         lay.addWidget(probe_card)
+
+        alarm_card = card()
+        a = QVBoxLayout(alarm_card)
+        a.addWidget(
+            QLabel(
+                "Alarms — SBS threshold registers 0x01/0x02 + the BatteryStatus "
+                "flags (0x14). Clearing writes 0x0000 to both thresholds, the "
+                "standard SBS host response that switches the ALARM flags off:"
+            )
+        )
+        a.setSpacing(6)
+        alarm_row = QHBoxLayout()
+        self.alarm_read_btn = QPushButton("Read Alarms")
+        self.alarm_read_btn.clicked.connect(self._read_alarms)
+        self.alarm_clear_btn = QPushButton("Clear Alarms")
+        self.alarm_clear_btn.setObjectName("primary")
+        self.alarm_clear_btn.clicked.connect(self._clear_alarms)
+        alarm_row.addWidget(self.alarm_read_btn)
+        alarm_row.addWidget(self.alarm_clear_btn)
+        alarm_row.addStretch(1)
+        a.addLayout(alarm_row)
+        lay.addWidget(alarm_card)
 
         self.output = QTextEdit()
         self.output.setReadOnly(True)
@@ -132,6 +161,103 @@ class UnlockPage(QWidget):
         ]
         self.output.setPlainText("\n".join(lines))
 
+    # -- alarm handling ---------------------------------------------------
+
+    _ALARM_REGS = (
+        SBS_REMAINING_CAPACITY_ALARM,
+        SBS_REMAINING_TIME_ALARM,
+    )
+
+    def _session_word(self, reg: int):
+        session = self.bench.session
+        if session is None:
+            raise SMbusError(
+                "No gauge connected — open one on the Bench Analyzer page first."
+            )
+        return session.gauge.read_word_maybe(reg)
+
+    def _alarm_report(self, prefix: str = "") -> str:
+        lines = [prefix] if prefix else []
+        cap = self._session_word(SBS_REMAINING_CAPACITY_ALARM)
+        time_ = self._session_word(SBS_REMAINING_TIME_ALARM)
+        status = self._session_word(SBS_BATTERY_STATUS)
+        flags = (
+            ", ".join(decode_status(status)).lower()
+            if status is not None
+            else "unavailable"
+        )
+        lines += [
+            f"RemainingCapacityAlarm (0x01): "
+            f"{'unavailable' if cap is None else f'{cap} mAh'}",
+            f"RemainingTimeAlarm    (0x02): "
+            f"{'unavailable' if time_ is None else f'{time_} min'}",
+            f"BatteryStatus  (0x14): {flags}"
+            + ("" if status is None else f" (0x{status:04X})"),
+        ]
+        return "\n".join(lines)
+
+    def _read_alarms(self) -> None:
+        try:
+            self.output.setPlainText(self._alarm_report("Alarms:"))
+        except SMbusError as exc:
+            self.output.setPlainText(f"Alarm read failed: {exc}")
+
+    def _clear_alarms(self) -> None:
+        if not self.consent.isChecked():
+            QMessageBox.warning(
+                self,
+                "Consent required",
+                "Clearing alarms writes to the gauge. Acknowledge the write "
+                "consent statement below first.",
+            )
+            return
+        interop = self._interop_no_probe()
+        before = ""
+        try:
+            before = self._alarm_report("Alarms before:")
+        except SMbusError as exc:
+            self.output.setPlainText(f"Alarm read failed: {exc}")
+            return
+        cleared: list[str] = []
+        for reg in self._ALARM_REGS:
+            try:
+                interop.write_word(reg, 0x0000)
+                cleared.append(f"0x{reg:02X}=0x0000")
+            except ConsentRequired as exc:
+                self.output.setPlainText(
+                    f"{before}\n\nConsent refused: {exc}\n"
+                    "Click 'Enable Write Access' first."
+                )
+                return
+            except SMbusError as exc:
+                self.output.setPlainText(
+                    f"{before}\n\nWrite to 0x{reg:02X} failed: {exc}"
+                )
+                return
+        try:
+            after = self._alarm_report("Alarms after:")
+        except SMbusError as exc:
+            after = f"(read-back failed: {exc})"
+        self.output.setPlainText(
+            f"{before}\n\nCleared: {', '.join(cleared)}\n\n{after}\n\n"
+            "Note: if the ALARM flags persist, this gauge family clears "
+            "them with a vendor-specific command — VoltClinic does not "
+            "ship vendor register maps on purpose."
+        )
+
+    def _interop_no_probe(self) -> FuelGaugeInterop:
+        session = self.bench.session
+        if session is None:
+            raise SMbusError(
+                "No gauge connected — open one on the Bench Analyzer page first."
+            )
+        gauge = FuelGaugeInterop(session.bus, session.addr)
+        if self._writes_enabled:
+            # Write access was explicitly granted this session; mirror it on
+            # freshly built interop objects so guarded writes can proceed.
+            gauge.grant_write_permission(True)
+        return gauge
+
     def _enable_writes(self) -> None:
         if not self.consent.isChecked():
             QMessageBox.warning(
@@ -145,6 +271,7 @@ class UnlockPage(QWidget):
             return
         try:
             self.gauge.grant_write_permission(True)
+            self._writes_enabled = True
         except ConsentRequired as exc:
             QMessageBox.warning(self, "Consent required", str(exc))
             return
